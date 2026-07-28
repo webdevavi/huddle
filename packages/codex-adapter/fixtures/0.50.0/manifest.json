@@ -1,0 +1,12 @@
+{
+  "version": "0.50.0",
+  "schemaFingerprint": "codex-app-server-0.50.0-v1",
+  "files": [
+    "initialize.jsonl",
+    "turn-start.jsonl",
+    "turn-steer.jsonl",
+    "turn-interrupt.jsonl",
+    "approval-exec.jsonl",
+    "unknown-method.jsonl"
+  ]
+}
