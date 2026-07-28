@@ -1,0 +1,2 @@
+{"id":12,"result":{"ok":true}}
+{"method":"turn/completed","params":{"threadId":"thr_1","turnId":"turn_1","status":"interrupted"}}

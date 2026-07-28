@@ -1,0 +1,33 @@
+# Self-host control-plane stub. Runner remains on the host next to the repo.
+services:
+  control-plane:
+    build: .
+    image: huddle-control-plane:stub
+    ports:
+      - "${HUDDLE_PORT:-8080}:8080"
+    environment:
+      HUDDLE_HOST: 0.0.0.0
+      HUDDLE_PORT: "8080"
+      HUDDLE_DATABASE_URL: ${HUDDLE_DATABASE_URL:-sqlite:///data/huddle.db}
+      HUDDLE_BASE_URL: ${HUDDLE_BASE_URL:-http://localhost:8080}
+      HUDDLE_TELEMETRY: ${HUDDLE_TELEMETRY:-off}
+      HUDDLE_DATA_DIR: /data
+      HUDDLE_SESSION_SECRET: ${HUDDLE_SESSION_SECRET:-dev-only-change-me}
+      HUDDLE_SIGNING_SECRET: ${HUDDLE_SIGNING_SECRET:-dev-only-change-me}
+    volumes:
+      # SQLite / local data volume — back up this path; see docs/self-host/
+      - huddle-data:/data
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8080/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  huddle-data:

@@ -1,0 +1,118 @@
+:root {
+  --hud-canvas: #f3f5f2;
+  --hud-surface: #ffffff;
+  --hud-surface-muted: #e8ebe6;
+  --hud-text: #1a211c;
+  --hud-text-muted: #4a554e;
+  --hud-text-subtle: #6b756e;
+  --hud-border: #c9d0c8;
+  --hud-border-strong: #8a948b;
+  --hud-focus: #0f6b5c;
+  --hud-accent: #0f6b5c;
+  --hud-accent-contrast: #f5fffb;
+  --hud-success: #1f7a3f;
+  --hud-warning: #9a6b12;
+  --hud-danger: #b42318;
+  --hud-diff-add: #1f7a3f;
+  --hud-diff-del: #b42318;
+  --hud-redacted: #5c6360;
+  --hud-offline: #5c6360;
+  --hud-radius: 4px;
+  --hud-font-ui: "IBM Plex Sans", "Segoe UI", sans-serif;
+  --hud-font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --hud-font-size-body: 16px;
+  --hud-touch: 44px;
+  --hud-space-1: 4px;
+  --hud-space-2: 8px;
+  --hud-space-3: 12px;
+  --hud-space-4: 16px;
+  --hud-space-5: 20px;
+  --hud-space-6: 24px;
+  --hud-space-8: 32px;
+  --hud-space-10: 40px;
+  --hud-space-12: 48px;
+  --hud-row-pad-y: 10px;
+  --hud-inspector-width: 400px;
+}
+
+[data-density="compact"] {
+  --hud-row-pad-y: 6px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--hud-font-ui);
+  font-size: var(--hud-font-size-body);
+  line-height: 1.45;
+  color: var(--hud-text);
+  background:
+    radial-gradient(1200px 600px at 10% -10%, #dfe8e2 0%, transparent 55%),
+    linear-gradient(180deg, #eef2ee 0%, var(--hud-canvas) 40%);
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+a {
+  color: var(--hud-accent);
+}
+
+:focus-visible {
+  outline: 2px solid var(--hud-focus);
+  outline-offset: 2px;
+}
+
+.skip-link {
+  position: absolute;
+  left: var(--hud-space-2);
+  top: -100px;
+  z-index: 100;
+  padding: var(--hud-space-2) var(--hud-space-3);
+  background: var(--hud-accent);
+  color: var(--hud-accent-contrast);
+  text-decoration: none;
+  border-radius: var(--hud-radius);
+}
+
+.skip-link:focus {
+  top: var(--hud-space-2);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

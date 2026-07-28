@@ -1,0 +1,1 @@
+{"method":"execCommandApproval","id":"apr_1","params":{"threadId":"thr_1","turnId":"turn_1","command":"curl https://example.com","cwd":"/repo","reason":"network access"}}
