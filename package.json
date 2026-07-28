@@ -13,11 +13,14 @@
     "lint": "eslint .",
     "typecheck": "tsc -b",
     "test": "vitest run && pnpm --filter @huddle/web test",
+    "build:web": "pnpm --filter @huddle/web build",
+    "huddle": "huddle",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
   "devDependencies": {
     "@eslint/js": "^9.22.0",
+    "@huddle/cli": "workspace:*",
     "@types/node": "^22.13.10",
     "eslint": "^9.22.0",
     "eslint-config-prettier": "^10.1.1",

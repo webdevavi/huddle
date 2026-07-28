@@ -2,14 +2,16 @@
 
 Multiplayer control for local coding agents.
 
-This repository is an early monorepo scaffold. Product and technical requirements
-live in:
+Start Codex in an isolated worktree with one command, share one link, and collaborate
+through structured observation, driver handoff, and explicit approvals — without a
+remote shell or moving credentials into the cloud.
+
+Product and technical requirements:
 
 - [`docs/plans/huddle-product-technical-spec.md`](docs/plans/huddle-product-technical-spec.md)
+- Design system: [`DESIGN.md`](DESIGN.md)
 
 ## Golden path
-
-From a Git repository (stub control plane / runner until later lanes land):
 
 ```bash
 npx huddle codex
@@ -19,8 +21,8 @@ In this workspace after install:
 
 ```bash
 pnpm install
-pnpm --filter @huddle/cli typecheck
-pnpm exec huddle codex --non-interactive --no-open
+pnpm typecheck
+pnpm huddle codex --non-interactive --no-open
 ```
 
 Expected shape:
@@ -36,8 +38,7 @@ First use defaults to **invite-only**. Use `--org <slug>` to restrict by organiz
 The share URL is always printed; browser/clipboard success is never required for readiness.
 
 Prerequisites: Node 22+, Git, pnpm 11.17.0 (via Corepack). Live Codex is optional —
-when absent, the CLI runs in stub mode. Clean up local metadata with
-`huddle room clean <room>` when that path is fully wired.
+when absent, the CLI runs in stub mode against local ports.
 
 ### Data disclosure (short)
 
@@ -47,16 +48,17 @@ events for collaboration. Details: [`docs/concepts/data-boundary.md`](docs/conce
 ## Workspace layout
 
 ```text
-apps/web                  Browser room UI (Vite + React)
-apps/control-plane        Hosted/self-hosted API (stub)
+apps/web                  Browser room UI (Vite + React, fixture mode)
+apps/control-plane        Hono API + WS catch-up (fake auth, SQLite)
 packages/cli              CLI golden path, doctor, diagnostics
 packages/protocol         Versioned event protocol + state machines
 packages/authz            Capability / lease / approval evidence contracts
 packages/testkit          Fake clock/IDs and fault-transport helpers
-packages/runner-core      Local runner (stub)
-packages/codex-adapter    Codex App Server adapter (stub)
-packages/persistence      PostgreSQL/SQLite ports (stub)
+packages/runner-core      Local WAL, worktree, policy, redaction, fencing
+packages/codex-adapter    Codex App Server adapter + fake fixtures
+packages/persistence      SQLite store + Postgres ports
 deploy/container          Control-plane container stub + env docs
+deploy/migrations         SQL schema
 ```
 
 ## Documentation
@@ -77,29 +79,27 @@ Requires Node 22 and pnpm 11.17.0 (via Corepack).
 ```bash
 corepack enable
 pnpm install
-pnpm dev          # stub: prints planned services (see below)
 pnpm lint
 pnpm typecheck
 pnpm test
+pnpm build:web
 
 # Web room UI (fixture mode, no live server)
 pnpm --filter @huddle/web dev
 # open http://localhost:5173/#/fixtures
+
+# Control plane (fake auth header x-huddle-user)
+pnpm --filter @huddle/control-plane dev
 ```
 
-`pnpm dev` is currently a **documented stub**. When web, control-plane, fake identity,
-fake Codex, and database fixtures land, it will start those services. Today it explains
-the planned loop and exits successfully so contributor docs stay accurate.
-
-Optional SQLite contributor mode will be selected via a documented flag once persistence
-wiring exists; default long-term target remains local PostgreSQL for `pnpm dev`.
+`pnpm dev` is currently a documented stub that explains the planned multi-service loop.
 
 CLI smoke:
 
 ```bash
-pnpm exec huddle --help
-pnpm exec huddle doctor --json
-pnpm exec huddle diagnostics create --non-interactive
+pnpm huddle --help
+pnpm huddle doctor --json
+pnpm huddle diagnostics create --non-interactive
 ```
 
 ## Self-host container stub
