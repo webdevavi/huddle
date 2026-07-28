@@ -11,7 +11,7 @@
   "scripts": {
     "lint": "eslint .",
     "typecheck": "tsc -b",
-    "test": "vitest run",
+    "test": "vitest run && pnpm --filter @huddle/web test",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },

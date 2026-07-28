@@ -10,7 +10,7 @@ live in:
 ## Workspace layout
 
 ```text
-apps/web                  Browser client (stub)
+apps/web                  Browser room UI (Vite + React)
 apps/control-plane        Hosted/self-hosted API (stub)
 packages/cli              CLI entry (stub)
 packages/protocol         Versioned event protocol + state machines
@@ -32,6 +32,10 @@ pnpm install
 pnpm lint
 pnpm typecheck
 pnpm test
+
+# Web room UI (fixture mode, no live server)
+pnpm --filter @huddle/web dev
+# open http://localhost:5173/#/fixtures
 ```
 
 ## License
