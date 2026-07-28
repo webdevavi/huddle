@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "skills": {
+    "brainstorm": {
+      "source": "webdevavi/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/brainstorm/SKILL.md",
+      "computedHash": "94aab12cede122eadcc8d78fc52472f206365b51a40d92d5becf53032c5fbebf"
+    },
+    "manager-of-the-month": {
+      "source": "webdevavi/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/manager-of-the-month/SKILL.md",
+      "computedHash": "19a6be75841181233e08772a8abd8c3d55c0d6ea1d3bbc6ff30ed4ddd497f9bf"
+    },
+    "validate-before-build": {
+      "source": "webdevavi/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/validate-before-build/SKILL.md",
+      "computedHash": "e6404b6718112c3230596612e35212bebc6ff254badb140b3d6812724e545f1b"
+    }
+  }
+}
