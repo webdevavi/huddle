@@ -10,6 +10,8 @@ export default defineConfig({
       "@huddle/protocol": path.join(root, "packages/protocol/src/index.ts"),
       "@huddle/authz": path.join(root, "packages/authz/src/index.ts"),
       "@huddle/testkit": path.join(root, "packages/testkit/src/index.ts"),
+      "@huddle/codex-adapter": path.join(root, "packages/codex-adapter/src/index.ts"),
+      "@huddle/runner-core": path.join(root, "packages/runner-core/src/index.ts"),
     },
   },
   test: {

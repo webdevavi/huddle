@@ -1,0 +1,3 @@
+{"id":11,"result":{"turnId":"turn_1"}}
+{"method":"item/agentMessage/delta","params":{"itemId":"item_4","delta":"Steered","threadId":"thr_1","turnId":"turn_1"}}
+{"method":"item/agentMessage","params":{"itemId":"item_4","text":"Steered update","threadId":"thr_1","turnId":"turn_1"}}
