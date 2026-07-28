@@ -3,7 +3,12 @@
   "compilerOptions": {
     "rootDir": "src",
     "outDir": "dist",
-    "composite": true
+    "composite": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "types": ["vite/client"]
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"],
+  "references": [{ "path": "../../packages/protocol" }, { "path": "../../packages/authz" }]
 }
