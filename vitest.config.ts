@@ -10,17 +10,15 @@ export default defineConfig({
       "@huddle/protocol": path.join(root, "packages/protocol/src/index.ts"),
       "@huddle/authz": path.join(root, "packages/authz/src/index.ts"),
       "@huddle/testkit": path.join(root, "packages/testkit/src/index.ts"),
-<<<<<<< HEAD
       "@huddle/codex-adapter": path.join(root, "packages/codex-adapter/src/index.ts"),
       "@huddle/runner-core": path.join(root, "packages/runner-core/src/index.ts"),
-=======
       "@huddle/persistence": path.join(root, "packages/persistence/src/index.ts"),
       "@huddle/control-plane": path.join(root, "apps/control-plane/src/index.ts"),
->>>>>>> 2f68d27 (feat(ws-c): control plane persistence, auth, events, outbox, and WS catch-up)
     },
   },
   test: {
     include: ["packages/*/src/**/*.test.ts", "apps/*/src/**/*.test.ts"],
+    exclude: ["apps/web/**", "**/node_modules/**", "**/dist/**", "**/build/**"],
     environment: "node",
   },
 });
