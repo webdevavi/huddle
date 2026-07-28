@@ -3,7 +3,10 @@
 When a request matches an available skill, use that skill's instructions. When in doubt, use the matching skill.
 
 Key routing rules:
-- Product ideas/brainstorming → use /office-hours
+- Product ideas/brainstorming → use /office-hours or /brainstorm
+- Parallel ideation/alternatives → use /brainstorm
+- Feasibility spikes/MVP experiments → use /validate-before-build
+- Multi-workstream orchestration to one PR → use /manager-of-the-month
 - Strategy/scope → use /plan-ceo-review
 - Architecture → use /plan-eng-review
 - Design system/plan review → use /design-consultation or /plan-design-review
