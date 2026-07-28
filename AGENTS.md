@@ -2,6 +2,15 @@
 
 When a request matches an available skill, use that skill's instructions. When in doubt, use the matching skill.
 
+Installed project skills (available to Cloud Agents from this repo):
+- `/brainstorm` — parallel ideation and alternatives
+- `/validate-before-build` — feasibility spikes / MVP experiments
+- `/manager-of-the-month` — multi-workstream orchestration to one PR
+
+On Cloud Agents, invoke explicitly if needed (slash menu may not list them):
+`use the brainstorm skill`, `use the validate-before-build skill`, or
+`use the manager-of-the-month skill`.
+
 Key routing rules:
 - Product ideas/brainstorming → use /office-hours or /brainstorm
 - Parallel ideation/alternatives → use /brainstorm

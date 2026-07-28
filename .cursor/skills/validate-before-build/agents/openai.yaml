@@ -1,0 +1,4 @@
+interface:
+  display_name: "Validate Before Build"
+  short_description: "Test risky ideas with realistic vertical slices"
+  default_prompt: "Use $validate-before-build to test the riskiest assumption in this idea with a realistic, evidence-driven vertical slice."

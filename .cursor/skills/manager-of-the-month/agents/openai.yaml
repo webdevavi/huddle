@@ -1,0 +1,4 @@
+interface:
+  display_name: "Manager of the Month"
+  short_description: "Coordinate worktrees, checkpoints, and one PR"
+  default_prompt: "Use $manager-of-the-month to clarify this task brief, coordinate parallel worktree tasks through checkpoints, deliver one integrated PR, and clean up temporary worktrees."
