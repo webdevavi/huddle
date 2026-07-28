@@ -13,9 +13,16 @@
   },
   "files": ["dist"],
   "scripts": {
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -b",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@huddle/authz": "workspace:*",
+    "@huddle/protocol": "workspace:*"
   },
   "devDependencies": {
-    "typescript": "^5.8.2"
+    "@huddle/testkit": "workspace:*",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.8"
   }
 }

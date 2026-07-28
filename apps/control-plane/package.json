@@ -12,10 +12,27 @@
     }
   },
   "files": ["dist"],
+  "bin": {
+    "huddle-control-plane": "./dist/cli.js"
+  },
   "scripts": {
-    "typecheck": "tsc -b"
+    "dev": "tsx src/cli.ts",
+    "start": "node dist/cli.js",
+    "typecheck": "tsc -b",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@huddle/authz": "workspace:*",
+    "@huddle/persistence": "workspace:*",
+    "@huddle/protocol": "workspace:*",
+    "@huddle/testkit": "workspace:*",
+    "hono": "^4.7.5",
+    "ws": "^8.18.1"
   },
   "devDependencies": {
-    "typescript": "^5.8.2"
+    "@types/ws": "^8.18.0",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.8"
   }
 }

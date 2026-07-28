@@ -10,6 +10,8 @@ export default defineConfig({
       "@huddle/protocol": path.join(root, "packages/protocol/src/index.ts"),
       "@huddle/authz": path.join(root, "packages/authz/src/index.ts"),
       "@huddle/testkit": path.join(root, "packages/testkit/src/index.ts"),
+      "@huddle/persistence": path.join(root, "packages/persistence/src/index.ts"),
+      "@huddle/control-plane": path.join(root, "apps/control-plane/src/index.ts"),
     },
   },
   test: {
