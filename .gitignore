@@ -11,3 +11,4 @@ coverage/
 .vite/
 *.log
 .pnpm-store/
+.huddle/
