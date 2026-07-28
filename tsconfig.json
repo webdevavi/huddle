@@ -1,0 +1,14 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/protocol" },
+    { "path": "packages/authz" },
+    { "path": "packages/testkit" },
+    { "path": "packages/cli" },
+    { "path": "packages/runner-core" },
+    { "path": "packages/codex-adapter" },
+    { "path": "packages/persistence" },
+    { "path": "apps/web" },
+    { "path": "apps/control-plane" }
+  ]
+}
