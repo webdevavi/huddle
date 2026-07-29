@@ -6,11 +6,13 @@ async function main(): Promise<void> {
   const port = Number(process.env.PORT ?? 8787);
   const host = process.env.HOST ?? "127.0.0.1";
   const sqlitePath = process.env.HUDDLE_SQLITE_PATH ?? ":memory:";
+  const databaseUrl = process.env.HUDDLE_DATABASE_URL;
 
   const deps = createDeps({
     port,
     host,
     sqlitePath,
+    ...(databaseUrl === undefined ? {} : { databaseUrl }),
     clock: new SystemClock(),
     ids: new UuidGenerator(),
   });

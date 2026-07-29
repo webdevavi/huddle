@@ -4,6 +4,7 @@
  */
 export type { ControlPlaneClient, RoomSnapshot, ComposerMode } from "./client/types.js";
 export { MockControlPlaneClient } from "./client/MockControlPlaneClient.js";
+export { LiveControlPlaneClient } from "./client/LiveControlPlaneClient.js";
 export {
   roomViewReducer,
   initialRoomViewState,

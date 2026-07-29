@@ -110,6 +110,10 @@ describe("state machines", () => {
     expect(granted.state.state).toBe("active");
     expect(granted.state.leaseVersion).toBe(1);
     lease = granted.state;
+    const requested = transitionDriverLease(lease, "request", "member_b");
+    expect(requested.ok).toBe(true);
+    expect(requested.state.state).toBe("active");
+    expect(requested.state.memberId).toBe("member_a");
     const pending = transitionDriverLease(lease, "begin_handoff");
     expect(pending.state.state).toBe("handoff_pending");
     const handed = transitionDriverLease(pending.state, "complete_handoff", "member_b");

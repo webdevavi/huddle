@@ -63,6 +63,7 @@ describe("huddle CLI golden path", () => {
 
   it("honors --server for self-host escape hatch", async () => {
     const c = capture();
+    const { createStubControlPlane, createStubRunner } = await import("../ports/stubs.js");
     const result = await runCli({
       argv: [
         "--server",
@@ -72,6 +73,8 @@ describe("huddle CLI golden path", () => {
         "--json",
       ],
       ...c.io,
+      controlPlane: createStubControlPlane(),
+      runner: createStubRunner(),
       now: () => 1_000,
       resetDiagnostics: true,
     });

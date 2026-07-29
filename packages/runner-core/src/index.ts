@@ -85,6 +85,16 @@ export {
 } from "./sync/client.js";
 
 export {
+  HttpOutboundSyncClient,
+  type HttpOutboundSyncClientOptions,
+} from "./sync/http.js";
+
+export { sanitizeRunnerEnv } from "./env.js";
+export { resolveExecutable, type ExecutableLookupResult } from "./executable.js";
+export { assertSubmodulePolicy, type SubmodulePolicyResult } from "./submodule.js";
+export { runHuddleGit, type HuddleGitResult } from "./git-safe.js";
+
+export {
   startRunnerCore,
   type RunnerCoreOptions,
   type RunnerHandle,

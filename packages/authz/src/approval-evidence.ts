@@ -65,7 +65,9 @@ export type VerifyResult =
         | "nonce_replay"
         | "digest_mismatch"
         | "expired"
-        | "bad_signature";
+        | "bad_signature"
+        | "unknown_signer"
+        | "revoked_signer";
     };
 
 export interface EvidenceDigester {

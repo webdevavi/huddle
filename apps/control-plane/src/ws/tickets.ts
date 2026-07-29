@@ -3,14 +3,14 @@ import type { WsTicketRecord } from "@huddle/persistence";
 
 const TICKET_TTL_MS = 60_000;
 
-export function mintWsTicket(
+export async function mintWsTicket(
   deps: ControlPlaneDeps,
   input: {
     roomId: string;
     subjectType: "member" | "runner";
     subjectId: string;
   },
-): WsTicketRecord {
+): Promise<WsTicketRecord> {
   const now = deps.clock.nowIso();
   const ticket: WsTicketRecord = {
     id: deps.ids.uuid(),
@@ -21,6 +21,6 @@ export function mintWsTicket(
     consumedAt: null,
     createdAt: now,
   };
-  deps.store.createWsTicket(ticket);
+  await deps.store.createWsTicket(ticket);
   return ticket;
 }

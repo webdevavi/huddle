@@ -48,7 +48,7 @@ function runTransaction<T>(db: DatabaseSync, fn: () => T): T {
   }
 }
 
-function encodeCursor(cursor: OpaqueCursor): string {
+export function encodeCursor(cursor: OpaqueCursor): string {
   return Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url");
 }
 
@@ -167,7 +167,8 @@ export type SqliteStoreOptions = {
   wake?: OutboxWakePort;
 };
 
-export class SqliteStore implements ControlPlaneStore {
+/** Sync SQLite implementation; wrapped by {@link SqliteStore} for the async port. */
+export class SqliteStoreSync {
   readonly db: DatabaseSync;
   readonly wake: OutboxWakePort;
 
@@ -860,6 +861,68 @@ export class SqliteStore implements ControlPlaneStore {
     return room?.runnerEpoch ?? null;
   }
 
+  ingestRunnerEvents(input: {
+    roomId: string;
+    roomIncarnation: string;
+    runnerEpoch: number;
+    recordId: string;
+    events: AppendEventInput[];
+    nowIso: string;
+  }):
+    | { ok: true; lastAckedRecordId: string; serverCursor: string; highWaterMark: number }
+    | {
+        ok: false;
+        code: "room_not_found" | "incarnation_mismatch" | "epoch_mismatch";
+        message: string;
+      } {
+    const room = this.getRoom(input.roomId);
+    if (!room) {
+      return { ok: false, code: "room_not_found", message: "room not found" };
+    }
+    if (room.incarnation !== input.roomIncarnation) {
+      return { ok: false, code: "incarnation_mismatch", message: "room incarnation mismatch" };
+    }
+    if (room.runnerEpoch !== input.runnerEpoch) {
+      return { ok: false, code: "epoch_mismatch", message: "runner epoch mismatch" };
+    }
+
+    const events = runTransaction(this.db, () => {
+      const inserted: RoomEvent[] = [];
+      for (const ev of input.events) {
+        inserted.push(
+          this.#insertEventUnlocked(input.roomId, input.nowIso, {
+            ...ev,
+            runnerEpoch: input.runnerEpoch,
+          }),
+        );
+      }
+      for (const event of inserted) {
+        this.#insertOutboxUnlocked(event);
+      }
+      return inserted;
+    });
+
+    if (events.length > 0) {
+      this.wake.notify("browser", input.roomId);
+      this.wake.notify("runner", input.roomId);
+    }
+
+    const highWaterMark = this.getHighWaterMark(input.roomId);
+    const serverCursor = encodeCursor({
+      v: 1,
+      roomId: input.roomId,
+      afterSequence: highWaterMark,
+      membershipVersion: room.membershipVersion,
+      visibility: ["room", "approvers", "owner"],
+    });
+    return {
+      ok: true,
+      lastAckedRecordId: input.recordId,
+      serverCursor,
+      highWaterMark,
+    };
+  }
+
   #insertEventUnlocked(roomId: string, nowIso: string, input: AppendEventInput): RoomEvent {
     const room = this.getRoom(roomId);
     if (!room) throw new Error("room missing during event insert");
@@ -932,6 +995,151 @@ export class SqliteStore implements ControlPlaneStore {
           event.timestamp,
         );
     }
+  }
+}
+
+/** Async ControlPlaneStore backed by node:sqlite. */
+export class SqliteStore implements ControlPlaneStore {
+  readonly sync: SqliteStoreSync;
+
+  constructor(options: SqliteStoreOptions = {}) {
+    this.sync = new SqliteStoreSync(options);
+  }
+
+  get db(): DatabaseSync {
+    return this.sync.db;
+  }
+
+  get wake(): OutboxWakePort {
+    return this.sync.wake;
+  }
+
+  async upsertUser(user: UserRecord): Promise<void> {
+    this.sync.upsertUser(user);
+  }
+
+  async getUser(userId: string): Promise<UserRecord | null> {
+    return this.sync.getUser(userId);
+  }
+
+  async createSession(session: SessionRecord): Promise<void> {
+    this.sync.createSession(session);
+  }
+
+  async getSession(sessionId: string): Promise<SessionRecord | null> {
+    return this.sync.getSession(sessionId);
+  }
+
+  async deleteSession(sessionId: string): Promise<void> {
+    this.sync.deleteSession(sessionId);
+  }
+
+  async createRoom(input: CreateRoomInput) {
+    return this.sync.createRoom(input);
+  }
+
+  async getRoom(roomId: string): Promise<RoomRecord | null> {
+    return this.sync.getRoom(roomId);
+  }
+
+  async getRoomBySlug(slug: string): Promise<RoomRecord | null> {
+    return this.sync.getRoomBySlug(slug);
+  }
+
+  async listMembers(roomId: string, activeOnly = true): Promise<MemberRecord[]> {
+    return this.sync.listMembers(roomId, activeOnly);
+  }
+
+  async getMember(roomId: string, memberId: string): Promise<MemberRecord | null> {
+    return this.sync.getMember(roomId, memberId);
+  }
+
+  async getActiveMemberByUser(roomId: string, userId: string): Promise<MemberRecord | null> {
+    return this.sync.getActiveMemberByUser(roomId, userId);
+  }
+
+  async createInvite(input: CreateInviteInput) {
+    return this.sync.createInvite(input);
+  }
+
+  async getInviteByToken(token: string): Promise<InviteRecord | null> {
+    return this.sync.getInviteByToken(token);
+  }
+
+  async revokeInvite(
+    roomId: string,
+    inviteId: string,
+    expectedMembershipVersion: number,
+  ): Promise<boolean> {
+    return this.sync.revokeInvite(roomId, inviteId, expectedMembershipVersion);
+  }
+
+  async joinWithInvite(input: JoinRoomInput) {
+    return this.sync.joinWithInvite(input);
+  }
+
+  async getDriverLease(roomId: string): Promise<DriverLeaseRecord | null> {
+    return this.sync.getDriverLease(roomId);
+  }
+
+  async commitMutation(input: CommitMutationInput): Promise<CommitMutationResult> {
+    return this.sync.commitMutation(input);
+  }
+
+  async getMutation(mutationId: string): Promise<MutationReceipt | null> {
+    return this.sync.getMutation(mutationId);
+  }
+
+  async getEventsAfter(
+    roomId: string,
+    afterSequence: number,
+    opts: { limitBytes: number; visibility: ReadonlySet<string> },
+  ): Promise<CatchUpPage> {
+    return this.sync.getEventsAfter(roomId, afterSequence, opts);
+  }
+
+  async getHighWaterMark(roomId: string): Promise<number> {
+    return this.sync.getHighWaterMark(roomId);
+  }
+
+  async claimOutbox(
+    channel: OutboxChannel,
+    roomId: string,
+    afterId: string | null,
+    limit: number,
+  ): Promise<OutboxRecord[]> {
+    return this.sync.claimOutbox(channel, roomId, afterId, limit);
+  }
+
+  async markOutboxDelivered(ids: string[], deliveredAt: string): Promise<void> {
+    this.sync.markOutboxDelivered(ids, deliveredAt);
+  }
+
+  async createWsTicket(ticket: WsTicketRecord): Promise<void> {
+    this.sync.createWsTicket(ticket);
+  }
+
+  async consumeWsTicket(ticketId: string, nowIso: string): Promise<WsTicketRecord | null> {
+    return this.sync.consumeWsTicket(ticketId, nowIso);
+  }
+
+  async casRunnerEpoch(
+    roomId: string,
+    expectedEpoch: number,
+    nowIso: string,
+  ): Promise<number | null> {
+    return this.sync.casRunnerEpoch(roomId, expectedEpoch, nowIso);
+  }
+
+  async ingestRunnerEvents(input: {
+    roomId: string;
+    roomIncarnation: string;
+    runnerEpoch: number;
+    recordId: string;
+    events: AppendEventInput[];
+    nowIso: string;
+  }) {
+    return this.sync.ingestRunnerEvents(input);
   }
 }
 

@@ -15,7 +15,7 @@ describe("JoinPage", () => {
     await user.click(screen.getByRole("checkbox"));
     expect(screen.getByRole("button", { name: /continue to room/i })).toBeEnabled();
     await user.click(screen.getByRole("button", { name: /continue to room/i }));
-    expect(onJoin).toHaveBeenCalled();
+    expect(onJoin).toHaveBeenCalledWith({ roomId: "room_demo" });
   });
 });
 

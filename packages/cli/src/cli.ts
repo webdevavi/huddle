@@ -2,9 +2,11 @@ import { loadConfig } from "./config/load.js";
 import { ExitCode } from "./exit-codes.js";
 import { createDxError, renderDxError, catalogEntry, resetDiagnosticIds } from "./errors/index.js";
 import { parseArgs } from "./parse-args.js";
+import { createHttpControlPlane } from "./ports/http-control-plane.js";
+import { createLiveRunner } from "./ports/live-runner.js";
 import { createStubControlPlane, createStubRunner } from "./ports/stubs.js";
 import type { ControlPlanePort, RunnerPort } from "./ports/types.js";
-import { CLI_VERSION } from "./version.js";
+import { CLI_VERSION, HUDDLE_DEFAULT_SERVER } from "./version.js";
 import { runAuthCommand } from "./commands/auth.js";
 import { runCodexCommand } from "./commands/codex.js";
 import { runConfigCommand } from "./commands/config.js";
@@ -12,6 +14,10 @@ import { runDiagnosticsCommand } from "./commands/diagnostics.js";
 import { runDoctorCommand } from "./commands/doctor.js";
 import { runRoomCommand } from "./commands/room.js";
 import { HELP_TEXT, type CommandContext, type CommandResult, type IoStreams } from "./commands/types.js";
+
+function shouldUseLivePorts(server: string): boolean {
+  return process.env.HUDDLE_LIVE === "1" || server !== HUDDLE_DEFAULT_SERVER;
+}
 
 export type RunCliOptions = {
   argv?: string[];
@@ -70,14 +76,16 @@ export async function runCli(options: RunCliOptions = {}): Promise<CommandResult
     return { exitCode: ExitCode.SUCCESS };
   }
 
+  const live = shouldUseLivePorts(config.server);
   const ctx: CommandContext = {
     config,
     args: parsed.command,
     options: parsed.options,
     positionals: parsed.positionals,
     io,
-    controlPlane: options.controlPlane ?? createStubControlPlane(),
-    runner: options.runner ?? createStubRunner(),
+    controlPlane:
+      options.controlPlane ?? (live ? createHttpControlPlane() : createStubControlPlane()),
+    runner: options.runner ?? (live ? createLiveRunner() : createStubRunner()),
     now: options.now ?? (() => Date.now()),
   };
 

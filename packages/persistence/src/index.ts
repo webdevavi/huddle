@@ -39,7 +39,16 @@ export {
 export {
   createSqliteStore,
   decodeCursor,
+  encodeCursor,
   InProcessOutboxWake,
   SqliteStore,
+  SqliteStoreSync,
   type SqliteStoreOptions,
 } from "./sqlite/store.js";
+
+export {
+  createPostgresStore,
+  createPostgresStoreFromSqliteMirror,
+  PostgresStore,
+  type CreatePostgresStoreOptions,
+} from "./postgres/store.js";

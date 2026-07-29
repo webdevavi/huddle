@@ -36,3 +36,6 @@ export {
   type MutationAuthzInput,
   type MutationAuthzResult,
 } from "./policy.js";
+
+// Node crypto (Ed25519) lives in `@huddle/authz/crypto` so browsers can import
+// role/capability types without pulling `node:crypto`.
