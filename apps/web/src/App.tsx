@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
+import { LiveControlPlaneClient } from "./client/LiveControlPlaneClient.js";
 import { MockControlPlaneClient } from "./client/MockControlPlaneClient.js";
 import type { MockSeed } from "./client/MockControlPlaneClient.js";
+import type { ControlPlaneClient } from "./client/types.js";
 import { FixturesPage } from "./fixtures/FixturesPage.js";
 import { RoomShell } from "./room/RoomShell.js";
 import { JoinPage } from "./trust/JoinPage.js";
@@ -25,12 +27,21 @@ function parseRoute(hash: string): Route {
   return { name: "join" };
 }
 
+function createClient(): ControlPlaneClient {
+  const apiUrl = import.meta.env.VITE_HUDDLE_API_URL;
+  if (typeof apiUrl === "string" && apiUrl.trim()) {
+    return new LiveControlPlaneClient({ baseUrl: apiUrl.trim() });
+  }
+  return new MockControlPlaneClient();
+}
+
 export function App() {
   const [route, setRoute] = useState<Route>(() =>
     typeof window !== "undefined" ? parseRoute(window.location.hash) : { name: "join" },
   );
 
-  const client = useMemo(() => new MockControlPlaneClient(), []);
+  const client = useMemo(() => createClient(), []);
+  const mockClient = client instanceof MockControlPlaneClient ? client : null;
 
   useEffect(() => {
     const onHash = () => setRoute(parseRoute(window.location.hash));
@@ -39,10 +50,10 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (route.name === "room" && route.seed) {
-      client.seedRoom(route.roomId, route.seed);
+    if (route.name === "room" && route.seed && mockClient) {
+      mockClient.seedRoom(route.roomId, route.seed);
     }
-  }, [client, route]);
+  }, [mockClient, route]);
 
   function go(path: string) {
     window.location.hash = path;
@@ -53,7 +64,7 @@ export function App() {
     return (
       <FixturesPage
         onOpenRoom={(seed) => {
-          client.seedRoom("room_demo", seed as MockSeed);
+          mockClient?.seedRoom("room_demo", seed as MockSeed);
           go(`/room/room_demo?seed=${seed}`);
         }}
       />
@@ -64,7 +75,7 @@ export function App() {
     return (
       <JoinPage
         onJoin={() => {
-          client.seedRoom("room_demo", "approval");
+          mockClient?.seedRoom("room_demo", "approval");
           go("/room/room_demo");
         }}
       />
