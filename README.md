@@ -126,6 +126,24 @@ pnpm huddle doctor --json
 pnpm huddle diagnostics create --non-interactive
 ```
 
+### Local end-to-end
+
+```bash
+# terminal 1 — control plane (SQLite file)
+HOST=127.0.0.1 PORT=8787 HUDDLE_SQLITE_PATH=./.huddle/dev.db \
+  pnpm --filter @huddle/control-plane exec tsx src/cli.ts
+
+# terminal 2 — web (same-origin Vite proxy → CP)
+cd apps/web && VITE_HUDDLE_API_URL= VITE_HUDDLE_IDENTITY=alice:Alice pnpm exec vite --host 127.0.0.1 --port 5173
+
+# terminal 3 — API/WS acceptance script (requires CP)
+pnpm test:e2e
+
+# live CLI room (requires CP)
+pnpm huddle --server http://127.0.0.1:8787 codex --non-interactive --no-open --no-worktree --json
+# then open http://127.0.0.1:5173/#/join?room=<room.id>
+```
+
 ## Self-host container stub
 
 ```bash
