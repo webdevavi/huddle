@@ -26,9 +26,30 @@ export function createApp(deps: ControlPlaneDeps, hub: RoomHub): Hono<{ Variable
   const auth = new FakeAuthService(deps.store, deps.clock, deps.ids);
 
   app.use("*", async (c, next) => {
+    const origin = c.req.header("origin") ?? "*";
+    if (c.req.method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "access-control-allow-origin": origin,
+          "access-control-allow-credentials": "true",
+          "access-control-allow-headers":
+            "content-type, authorization, x-huddle-session, x-huddle-user",
+          "access-control-allow-methods": "GET,POST,DELETE,OPTIONS",
+        },
+      });
+    }
     c.set("deps", deps);
     c.set("auth", auth);
     await next();
+    // Apply CORS to whatever response was produced (including raw `new Response`).
+    c.header("access-control-allow-origin", origin);
+    c.header("access-control-allow-credentials", "true");
+    c.header(
+      "access-control-allow-headers",
+      "content-type, authorization, x-huddle-session, x-huddle-user",
+    );
+    c.header("access-control-allow-methods", "GET,POST,DELETE,OPTIONS");
   });
 
   registerGithubAuthRoutes(app, {

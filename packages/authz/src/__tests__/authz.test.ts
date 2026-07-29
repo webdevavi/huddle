@@ -1,16 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
+  StubApprovalVerifier,
+  StubEvidenceDigester,
+  authorizeMutation,
+  checkDriverLease,
+  roleHasCapability,
+} from "../index.js";
+import {
   DeviceTrustStore,
   Ed25519ApprovalSigner,
   Ed25519ApprovalVerifier,
   Sha256EvidenceDigester,
-  StubApprovalVerifier,
-  StubEvidenceDigester,
-  authorizeMutation,
   buildUnsignedEvidence,
-  checkDriverLease,
-  roleHasCapability,
-} from "../index.js";
+} from "../crypto.js";
 
 describe("authz contracts", () => {
   it("maps owner capabilities and denies viewer queue", () => {

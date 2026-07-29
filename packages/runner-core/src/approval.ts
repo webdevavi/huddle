@@ -3,13 +3,12 @@ import {
   StubEvidenceDigester,
   type ApprovalDecision,
   type ApprovalVerifier,
-  type CryptoVerifyContext,
   type EvidenceDigester,
   type EvidenceMaterial,
   type SignedApprovalEvidence,
-  type TrustStore,
   type VerifyResult,
 } from "@huddle/authz";
+import type { CryptoVerifyContext, TrustStore } from "@huddle/authz/crypto";
 import { createHuddleError, type HuddleError } from "@huddle/protocol";
 import type { RunnerFence } from "./epoch.js";
 import { assertRunnerEpoch } from "./epoch.js";

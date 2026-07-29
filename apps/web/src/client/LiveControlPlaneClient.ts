@@ -86,7 +86,9 @@ export class LiveControlPlaneClient implements ControlPlaneClient {
   constructor(options: LiveControlPlaneClientOptions) {
     this.#baseUrl = options.baseUrl.replace(/\/$/, "");
     this.#identity = options.identity ?? "bob:Bob";
-    this.#fetch = options.fetchImpl ?? fetch;
+    // Wrap native fetch so `this` is not lost (Illegal invocation in browsers).
+    const fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
+    this.#fetch = fetchImpl;
     this.#WebSocket = options.WebSocketImpl ?? WebSocket;
     this.#sessionId = options.sessionId ?? null;
   }

@@ -69,6 +69,12 @@ export function transitionDriverLease(
       }
       break;
     case "active":
+      if (event === "request") {
+        // Collaborator may request control while a holder is active; lease stays
+        // with the current driver until handoff/reclaim. The control plane emits
+        // driver.requested for the timeline.
+        return allow({ ...current });
+      }
       if (event === "begin_handoff") {
         return allow({
           state: "handoff_pending",

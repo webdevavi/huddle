@@ -32,22 +32,10 @@ export {
 } from "./approval-evidence.js";
 
 export {
-  Sha256EvidenceDigester,
-  Ed25519ApprovalSigner,
-  Ed25519ApprovalVerifier,
-  DeviceTrustStore,
-  generateDeviceKeyPair,
-  buildUnsignedEvidence,
-  canonicalJson,
-  type DeviceKeyPair,
-  type TrustStore,
-  type CryptoVerifyContext,
-  type UnsignedApprovalEvidence,
-  type ApprovalSigner,
-} from "./crypto.js";
-
-export {
   authorizeMutation,
   type MutationAuthzInput,
   type MutationAuthzResult,
 } from "./policy.js";
+
+// Node crypto (Ed25519) lives in `@huddle/authz/crypto` so browsers can import
+// role/capability types without pulling `node:crypto`.

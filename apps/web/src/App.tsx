@@ -8,29 +8,44 @@ import { RoomShell } from "./room/RoomShell.js";
 import { JoinPage } from "./trust/JoinPage.js";
 
 type Route =
-  { name: "join" } | { name: "room"; roomId: string; seed?: MockSeed } | { name: "fixtures" };
+  | { name: "join"; roomId?: string }
+  | { name: "room"; roomId: string; seed?: MockSeed }
+  | { name: "fixtures" };
 
 function parseRoute(hash: string): Route {
   const raw = hash.replace(/^#/, "") || "/join";
   const [pathPart, queryPart] = raw.split("?");
   const path = pathPart || "/join";
+  const params = new URLSearchParams(queryPart ?? "");
   if (path.startsWith("/fixtures")) return { name: "fixtures" };
   if (path.startsWith("/room/")) {
     const parts = path.split("/");
     const roomId = parts[2] || "room_demo";
-    const seedParam = new URLSearchParams(queryPart ?? "").get("seed");
+    const seedParam = params.get("seed");
     if (seedParam) {
       return { name: "room", roomId, seed: seedParam as MockSeed };
     }
     return { name: "room", roomId };
   }
-  return { name: "join" };
+  const roomId = params.get("room") ?? undefined;
+  return roomId ? { name: "join", roomId } : { name: "join" };
 }
 
 function createClient(): ControlPlaneClient {
-  const apiUrl = import.meta.env.VITE_HUDDLE_API_URL;
-  if (typeof apiUrl === "string" && apiUrl.trim()) {
-    return new LiveControlPlaneClient({ baseUrl: apiUrl.trim() });
+  // When VITE_HUDDLE_API_URL is set (even to ""), use the live client.
+  // Empty string → same-origin Vite proxy to the control plane.
+  if (import.meta.env.VITE_HUDDLE_API_URL !== undefined) {
+    const configured = String(import.meta.env.VITE_HUDDLE_API_URL).trim();
+    const baseUrl =
+      configured.length > 0
+        ? configured
+        : typeof window !== "undefined"
+          ? window.location.origin
+          : "http://127.0.0.1:5173";
+    return new LiveControlPlaneClient({
+      baseUrl,
+      identity: import.meta.env.VITE_HUDDLE_IDENTITY ?? "bob:Bob",
+    });
   }
   return new MockControlPlaneClient();
 }
@@ -42,6 +57,7 @@ export function App() {
 
   const client = useMemo(() => createClient(), []);
   const mockClient = client instanceof MockControlPlaneClient ? client : null;
+  const live = client instanceof LiveControlPlaneClient;
 
   useEffect(() => {
     const onHash = () => setRoute(parseRoute(window.location.hash));
@@ -74,9 +90,17 @@ export function App() {
   if (route.name === "join") {
     return (
       <JoinPage
-        onJoin={() => {
-          mockClient?.seedRoom("room_demo", "approval");
-          go("/room/room_demo");
+        live={live}
+        initialRoomId={route.roomId ?? ""}
+        onJoin={async ({ roomId }) => {
+          if (mockClient) {
+            mockClient.seedRoom(roomId || "room_demo", "approval");
+            go(`/room/${roomId || "room_demo"}`);
+            return;
+          }
+          // Live: ensure session can load the room (owner already a member; guests need prior join).
+          await client.getRoom(roomId);
+          go(`/room/${roomId}`);
         }}
       />
     );
