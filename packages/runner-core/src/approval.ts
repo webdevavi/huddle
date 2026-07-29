@@ -3,10 +3,11 @@ import {
   StubEvidenceDigester,
   type ApprovalDecision,
   type ApprovalVerifier,
+  type CryptoVerifyContext,
   type EvidenceDigester,
   type EvidenceMaterial,
   type SignedApprovalEvidence,
-  type VerifyContext,
+  type TrustStore,
   type VerifyResult,
 } from "@huddle/authz";
 import { createHuddleError, type HuddleError } from "@huddle/protocol";
@@ -16,6 +17,7 @@ import { assertRunnerEpoch } from "./epoch.js";
 export type ApprovalGateDeps = {
   digester?: EvidenceDigester;
   verifier?: ApprovalVerifier;
+  trust?: TrustStore;
 };
 
 export type ApprovalGateInput = {
@@ -50,7 +52,7 @@ export function verifyApprovalEvidence(
   const verifier = deps.verifier ?? new StubApprovalVerifier();
   const digest = digester.digest(input.material);
 
-  const context: VerifyContext = {
+  const baseContext = {
     roomIncarnation: input.expectedFence.roomIncarnation,
     runnerEpoch: input.expectedFence.runnerEpoch,
     expectedNonce: input.expectedNonce,
@@ -58,6 +60,9 @@ export function verifyApprovalEvidence(
     nowIso: input.nowIso,
     consumedNonces: input.consumedNonces,
   };
+  const context: CryptoVerifyContext | typeof baseContext = deps.trust
+    ? { ...baseContext, trust: deps.trust }
+    : baseContext;
 
   const result = verifier.verify(input.evidence, context);
   if (!result.ok) {
@@ -66,7 +71,9 @@ export function verifyApprovalEvidence(
         ? "RUNNER_EPOCH_STALE"
         : result.reason === "unsupported"
           ? "AUTHZ_APPROVAL_UNSUPPORTED"
-          : result.reason === "expired" || result.reason === "nonce_replay"
+          : result.reason === "expired" ||
+              result.reason === "nonce_replay" ||
+              result.reason === "revoked_signer"
             ? "AUTHZ_APPROVAL_STALE"
             : "AUTHZ_PERMISSION_DENIED";
 

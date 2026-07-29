@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-/* global console, process */
 /**
  * Backward-compatible stub entry. Prefer `scripts/dev.mjs`.
  * Forwards `--live` to the live control-plane launcher.

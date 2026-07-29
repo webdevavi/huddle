@@ -10,6 +10,7 @@ export default tseslint.config(
       "**/node_modules/**",
       "**/coverage/**",
       "**/*.tsbuildinfo",
+      "scripts/**/*.mjs",
     ],
   },
   js.configs.recommended,

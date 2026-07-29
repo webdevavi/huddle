@@ -1,6 +1,6 @@
 import { Hono } from "hono";
-import { transitionDriverLease } from "@huddle/protocol";
-import type { Capability } from "@huddle/authz";
+import { transitionDriverLease, type Provider, type RoomEvent } from "@huddle/protocol";
+import type { Capability, SignedApprovalEvidence } from "@huddle/authz";
 import { decodeCursor } from "@huddle/persistence";
 import type { ControlPlaneDeps } from "../config.js";
 import { FakeAuthService, approvalCapability, capabilityForInputKind, requestHash } from "../auth/fake.js";
@@ -9,7 +9,6 @@ import { readSessionId, requireSession, withSessionCookie } from "./session.js";
 import { mintWsTicket } from "../ws/tickets.js";
 import type { RoomHub } from "../ws/hub.js";
 import { registerGithubAuthRoutes, authMode } from "../auth/github.js";
-import type { SignedApprovalEvidence } from "@huddle/authz";
 
 type Variables = {
   deps: ControlPlaneDeps;
@@ -741,8 +740,8 @@ export function createApp(deps: ControlPlaneDeps, hub: RoomHub): Hono<{ Variable
       events: ingestEvents.map((ev) => {
         const base = {
           eventId: ev.eventId ?? deps.ids.eventId(),
-          type: ev.type as import("@huddle/protocol").RoomEvent["type"],
-          payload: ev.payload as import("@huddle/protocol").RoomEvent["payload"],
+          type: ev.type as RoomEvent["type"],
+          payload: ev.payload as RoomEvent["payload"],
           actor: ev.actor,
           runnerEpoch,
         };
@@ -751,9 +750,7 @@ export function createApp(deps: ControlPlaneDeps, hub: RoomHub): Hono<{ Variable
           ...(ev.visibility === undefined ? {} : { visibility: ev.visibility }),
           ...(ev.causationId === undefined ? {} : { causationId: ev.causationId }),
           ...(ev.correlationId === undefined ? {} : { correlationId: ev.correlationId }),
-          ...(ev.provider === undefined
-            ? {}
-            : { provider: ev.provider as import("@huddle/protocol").RoomEvent["provider"] }),
+          ...(ev.provider === undefined ? {} : { provider: ev.provider as Provider }),
         };
       }),
     });

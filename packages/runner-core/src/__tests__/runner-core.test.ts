@@ -353,3 +353,46 @@ describe("startRunnerCore integration", () => {
     await runner.close();
   });
 });
+
+describe("ENG-T6 workspace hardening", () => {
+  it("sanitizes env and disables git hooks path", async () => {
+    const { sanitizeRunnerEnv } = await import("../env.js");
+    const clean = sanitizeRunnerEnv({
+      HOME: "/home/u",
+      PATH: "/usr/bin",
+      NODE_OPTIONS: "--inspect",
+      GIT_TRACE: "1",
+      HUDDLE_SERVER: "http://localhost",
+      SECRET_TOKEN: "nope",
+    });
+    expect(clean.NODE_OPTIONS).toBeUndefined();
+    expect(clean.GIT_TRACE).toBeUndefined();
+    expect(clean.SECRET_TOKEN).toBeUndefined();
+    expect(clean.HUDDLE_SERVER).toBe("http://localhost");
+    expect(clean.GIT_CONFIG_VALUE_0).toBe("/dev/null");
+  });
+
+  it("rejects executables from the worktree PATH", async () => {
+    const { resolveExecutable } = await import("../executable.js");
+    const { dir } = await tempEnv();
+    const bin = join(dir, "evil-bin");
+    await writeFile(bin, "#!/bin/sh\necho hi\n", { mode: 0o755 });
+    const result = resolveExecutable("evil-bin", {
+      pathEnv: dir,
+      worktreeRoot: dir,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe("not_found");
+  });
+
+  it("flags .gitmodules without explicit policy", async () => {
+    const { assertSubmodulePolicy } = await import("../submodule.js");
+    const { dir } = await tempEnv();
+    const fs = new NodeFsPort();
+    await writeFile(join(dir, ".gitmodules"), "[submodule \"x\"]\n");
+    const blocked = await assertSubmodulePolicy(dir, fs);
+    expect(blocked.ok).toBe(false);
+    const allowed = await assertSubmodulePolicy(dir, fs, { allowInitializedReadOnly: true });
+    expect(allowed.ok).toBe(true);
+  });
+});
