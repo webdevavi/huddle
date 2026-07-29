@@ -4,17 +4,20 @@ Environment variables for the control-plane container. Defaults favor a safe loc
 
 | Variable | Purpose | Notes |
 |---|---|---|
-| `HUDDLE_HOST` | Bind address | Default `0.0.0.0` |
-| `HUDDLE_PORT` | HTTP port | Default `8080` |
-| `HUDDLE_BASE_URL` | Public base URL | Used for invite links |
+| `HUDDLE_HOST` / `HOST` | Bind address | Default `0.0.0.0` in containers |
+| `HUDDLE_PORT` / `PORT` | HTTP port | Default `8080` in containers |
+| `HUDDLE_BASE_URL` | Public base URL | OAuth callbacks + invite links |
+| `HUDDLE_WEB_BASE_URL` | Browser redirect after OAuth | Defaults to `HUDDLE_BASE_URL` |
 | `HUDDLE_DATABASE_URL` | Database | `sqlite:///data/huddle.db` or Postgres URL |
+| `HUDDLE_SQLITE_PATH` | Explicit SQLite file | Used when not on Postgres |
 | `HUDDLE_DATA_DIR` | Durable data directory | Mount as a volume |
-| `HUDDLE_GITHUB_CLIENT_ID` | OAuth client id | Required for real auth |
+| `HUDDLE_GITHUB_CLIENT_ID` | OAuth client id | Required for real auth — see [OAuth](./oauth.md) |
 | `HUDDLE_GITHUB_CLIENT_SECRET` | OAuth secret | Required for real auth |
 | `HUDDLE_SESSION_SECRET` | Session signing | Generate a strong random value |
 | `HUDDLE_SIGNING_SECRET` | General signing | Generate a strong random value |
 | `HUDDLE_TELEMETRY` | Operator telemetry | Self-host default **`off`** |
 | `HUDDLE_INVITE_TTL_HOURS` | Invite lifetime | Default `24` |
+| `HUDDLE_MIGRATIONS_PATH` | Schema SQL path | Set in the container image |
 
 ## SQLite path and backup
 

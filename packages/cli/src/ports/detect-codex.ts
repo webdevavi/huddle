@@ -1,10 +1,11 @@
 import { accessSync, constants } from "node:fs";
 import { delimiter } from "node:path";
 import { spawnSync } from "node:child_process";
+import { SUPPORTED_CODEX_CLI, parseCodexVersion } from "@huddle/codex-adapter";
 import type { CodexDetection } from "./types.js";
 
-/** Supported major.minor band for stub detection messaging. */
-export const SUPPORTED_CODEX_RANGE = "0.145.x";
+/** Supported Codex CLI band for doctor / preflight messaging. */
+export const SUPPORTED_CODEX_RANGE = SUPPORTED_CODEX_CLI.rangeLabel;
 
 function which(command: string): string | undefined {
   const pathEnv = process.env.PATH ?? "";
@@ -27,7 +28,15 @@ function parseVersion(raw: string): string | undefined {
 }
 
 function isSupported(version: string): boolean {
-  return version.startsWith("0.145.");
+  const parsed = parseCodexVersion(version);
+  const min = parseCodexVersion(SUPPORTED_CODEX_CLI.min);
+  if (!parsed || !min) return false;
+  for (let i = 0; i < 3; i += 1) {
+    const left = parsed[i]!;
+    const right = min[i]!;
+    if (left !== right) return left > right;
+  }
+  return true;
 }
 
 /**

@@ -1,0 +1,10 @@
+node_modules
+**/node_modules
+.git
+.github
+.huddle
+.local
+coverage
+**/coverage
+apps/web/dist
+**/.turbo

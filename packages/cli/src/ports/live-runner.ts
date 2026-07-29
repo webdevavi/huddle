@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { SUPPORTED_CODEX_APP_SERVER } from "@huddle/codex-adapter";
 import {
   createRoomWorktree,
   NodeFsPort,
@@ -78,6 +79,8 @@ export function createLiveRunner(options: LiveRunnerOptions = {}): RunnerPort {
 
       if (env.HUDDLE_LIVE_RUNNER === "1" && input.live) {
         const roomId = env.HUDDLE_ROOM_ID?.trim() || `room_${randomBytes(4).toString("hex")}`;
+        const spawn =
+          env.HUDDLE_SPAWN_CODEX === "1" || env.HUDDLE_SPAWN_CODEX === "true";
         try {
           const handle = await startRunnerCore({
             roomId,
@@ -85,11 +88,22 @@ export function createLiveRunner(options: LiveRunnerOptions = {}): RunnerPort {
               roomIncarnation: env.HUDDLE_ROOM_INCARNATION?.trim() || "inc_pending",
               runnerEpoch: Number(env.HUDDLE_RUNNER_EPOCH ?? 1) || 1,
             },
-            codexVersion: env.HUDDLE_CODEX_VERSION?.trim() || "0.145.0",
+            // Adapter pin is App Server protocol version, not Codex CLI version.
+            codexVersion:
+              env.HUDDLE_CODEX_APP_SERVER_VERSION?.trim() || SUPPORTED_CODEX_APP_SERVER.pinned,
             env,
             worktreeRoot: cwd,
+            spawnAppServer: spawn,
+            ...(env.HUDDLE_CODEX_PATH?.trim()
+              ? { codexPath: env.HUDDLE_CODEX_PATH.trim() }
+              : {}),
           });
-          // Fire-and-forget close on process exit is fine for contributor live mode.
+          const shutdown = () => {
+            void handle.close();
+          };
+          process.once("exit", shutdown);
+          process.once("SIGINT", shutdown);
+          process.once("SIGTERM", shutdown);
           void handle;
         } catch {
           // Live runner bootstrap is optional; agent mode still reflects detection.

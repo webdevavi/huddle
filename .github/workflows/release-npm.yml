@@ -1,0 +1,53 @@
+name: Release npm
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Version tag to publish (e.g. v0.1.0)"
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    name: Publish huddle packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: npm
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.17.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm typecheck
+
+      - name: Publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "NPM_TOKEN secret is required to publish."
+            exit 1
+          fi
+          # Publish dependency order: protocol → authz → codex-adapter → runner-core → cli → huddle
+          pnpm --filter @huddle/protocol publish --access public --no-git-checks
+          pnpm --filter @huddle/authz publish --access public --no-git-checks
+          pnpm --filter @huddle/codex-adapter publish --access public --no-git-checks
+          pnpm --filter @huddle/runner-core publish --access public --no-git-checks
+          pnpm --filter @huddle/cli publish --access public --no-git-checks
+          pnpm --filter huddle publish --access public --no-git-checks

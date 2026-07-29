@@ -55,10 +55,25 @@ export function createApp(deps: ControlPlaneDeps, hub: RoomHub): Hono<{ Variable
   registerGithubAuthRoutes(app, {
     deps,
     auth,
-    publicBaseUrl: () => `http://${deps.host}:${deps.port}`,
+    publicBaseUrl: () => deps.publicBaseUrl,
   });
 
   app.get("/healthz", (c) => c.json({ ok: true }));
+  app.get("/readyz", async (c) => {
+    try {
+      // Light readiness: store can answer a user lookup (may be null).
+      await deps.store.getUser("__readyz__");
+      return c.json({ ok: true, authMode: authMode() });
+    } catch (err) {
+      return c.json(
+        {
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        },
+        503,
+      );
+    }
+  });
 
   /** Fake auth: exchange identity header for a session cookie/token. */
   app.post("/v1/auth/session", async (c) => {

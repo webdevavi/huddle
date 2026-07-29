@@ -99,3 +99,9 @@ export {
   type RunnerCoreOptions,
   type RunnerHandle,
 } from "./runner.js";
+
+export {
+  spawnCodexAppServer,
+  type CodexAppServerProcess,
+  type SpawnCodexAppServerOptions,
+} from "./codex-process.js";
