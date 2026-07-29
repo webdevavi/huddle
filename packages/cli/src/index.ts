@@ -15,6 +15,10 @@ export {
 export {
   createStubControlPlane,
   createStubRunner,
+  createHttpControlPlane,
+  HttpControlPlanePort,
+  createLiveRunner,
+  LiveRunnerPort,
   detectCodex,
   SUPPORTED_CODEX_RANGE,
   type ControlPlanePort,

@@ -19,6 +19,9 @@
     "typecheck": "tsc -b",
     "test": "vitest run"
   },
+  "dependencies": {
+    "@huddle/runner-core": "workspace:*"
+  },
   "devDependencies": {
     "typescript": "^5.8.2",
     "vitest": "^3.0.8"

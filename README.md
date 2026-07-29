@@ -90,9 +90,33 @@ pnpm --filter @huddle/web dev
 
 # Control plane (fake auth header x-huddle-user)
 pnpm --filter @huddle/control-plane dev
+# or: pnpm dev -- --live
 ```
 
-`pnpm dev` is currently a documented stub that explains the planned multi-service loop.
+`pnpm dev` prints contributor guidance by default. Pass `--live` to start the
+control-plane via tsx.
+
+### Live local wiring
+
+| Variable | Where | Purpose |
+|---|---|---|
+| `VITE_HUDDLE_API_URL` | `apps/web` | When set, the web app uses `LiveControlPlaneClient` against this API base (otherwise Mock fixtures). |
+| `HUDDLE_LIVE=1` | CLI | Prefer HTTP control-plane + live runner ports (also enabled when `--server` is not the default). |
+| `HUDDLE_DATABASE_URL` | control-plane / self-host | Postgres DSN when not using SQLite (`HUDDLE_SQLITE_PATH`). |
+| `HUDDLE_USER` | CLI | Fake identity for `x-huddle-user` (`userId:DisplayName`). |
+
+Example:
+
+```bash
+# terminal 1
+pnpm dev -- --live
+
+# terminal 2
+VITE_HUDDLE_API_URL=http://127.0.0.1:8787 pnpm --filter @huddle/web dev
+
+# terminal 3
+HUDDLE_LIVE=1 HUDDLE_SERVER=http://127.0.0.1:8787 pnpm huddle auth login
+```
 
 CLI smoke:
 

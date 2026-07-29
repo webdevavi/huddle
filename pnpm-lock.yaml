@@ -129,6 +129,10 @@ importers:
         version: 5.9.3
 
   packages/cli:
+    dependencies:
+      '@huddle/runner-core':
+        specifier: workspace:*
+        version: link:../runner-core
     devDependencies:
       typescript:
         specifier: ^5.8.2

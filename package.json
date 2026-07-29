@@ -9,7 +9,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "node ./scripts/dev-stub.mjs",
+    "dev": "node ./scripts/dev.mjs",
     "lint": "eslint .",
     "typecheck": "tsc -b",
     "test": "vitest run && pnpm --filter @huddle/web test",

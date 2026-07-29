@@ -1,31 +1,21 @@
 #!/usr/bin/env node
 /* global console, process */
 /**
- * Contributor `pnpm dev` stub (AC-9 partial / DX-T9 subset).
- * Real orchestration lands when web, control-plane, fake auth/Codex, and DB fixtures exist.
+ * Backward-compatible stub entry. Prefer `scripts/dev.mjs`.
+ * Forwards `--live` to the live control-plane launcher.
  */
-const lines = [
-  "huddle: pnpm dev (stub)",
-  "",
-  "Planned local services (not started yet):",
-  "  - apps/web",
-  "  - apps/control-plane",
-  "  - fake identity / GitHub device flow",
-  "  - fake Codex App Server",
-  "  - seeded rooms",
-  "  - local PostgreSQL (default) or SQLite via a documented flag",
-  "",
-  "No production credentials are required for the contributor loop.",
-  "",
-  "Useful commands today:",
-  "  pnpm lint",
-  "  pnpm typecheck",
-  "  pnpm test",
-  "  pnpm exec huddle doctor --json",
-  "  pnpm exec huddle codex --non-interactive --no-open",
-  "",
-  "Self-host container stub: deploy/container (see docs/self-host/quickstart.md)",
-];
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 
-console.log(lines.join("\n"));
-process.exitCode = 0;
+const script = join(dirname(fileURLToPath(import.meta.url)), "dev.mjs");
+const child = spawn(process.execPath, [script, ...process.argv.slice(2)], {
+  stdio: "inherit",
+});
+child.on("exit", (code, signal) => {
+  if (signal) {
+    process.kill(process.pid, signal);
+    return;
+  }
+  process.exitCode = code ?? 1;
+});
