@@ -8,6 +8,8 @@ import { huddleError, jsonError } from "./errors.js";
 import { readSessionId, requireSession, withSessionCookie } from "./session.js";
 import { mintWsTicket } from "../ws/tickets.js";
 import type { RoomHub } from "../ws/hub.js";
+import { registerGithubAuthRoutes, authMode } from "../auth/github.js";
+import type { SignedApprovalEvidence } from "@huddle/authz";
 
 type Variables = {
   deps: ControlPlaneDeps;
@@ -30,11 +32,23 @@ export function createApp(deps: ControlPlaneDeps, hub: RoomHub): Hono<{ Variable
     await next();
   });
 
+  registerGithubAuthRoutes(app, {
+    deps,
+    auth,
+    publicBaseUrl: () => `http://${deps.host}:${deps.port}`,
+  });
+
   app.get("/healthz", (c) => c.json({ ok: true }));
 
   /** Fake auth: exchange identity header for a session cookie/token. */
   app.post("/v1/auth/session", async (c) => {
-    const session = auth.ensureSession(c.req.header("x-huddle-user") ?? undefined);
+    if (authMode() === "github") {
+      return jsonError(
+        huddleError("INTERNAL", "Use GitHub OAuth (/v1/auth/github/start)", "auth_mode_github"),
+        400,
+      );
+    }
+    const session = await auth.ensureSession(c.req.header("x-huddle-user") ?? undefined);
     const headers = withSessionCookie(session.sessionId);
     headers.set("content-type", "application/json");
     return new Response(JSON.stringify({ session }), { status: 200, headers });
@@ -44,7 +58,7 @@ export function createApp(deps: ControlPlaneDeps, hub: RoomHub): Hono<{ Variable
     const sessionOrErr = requireSession({
       deps,
       auth,
-      session: auth.resolveSession(readSessionId(c.req.raw.headers)),
+      session: await auth.resolveSession(readSessionId(c.req.raw.headers)),
     });
     if (sessionOrErr instanceof Response) return sessionOrErr;
     const session = sessionOrErr;
@@ -54,14 +68,14 @@ export function createApp(deps: ControlPlaneDeps, hub: RoomHub): Hono<{ Variable
       name?: string;
     };
     const slug = body.slug?.trim() || `room-${deps.ids.uuid()}`;
-    if (deps.store.getRoomBySlug(slug)) {
+    if (await deps.store.getRoomBySlug(slug)) {
       return jsonError(
         huddleError("STATE_INVALID_TRANSITION", "slug already in use", "room_slug_taken"),
         409,
       );
     }
 
-    const created = deps.store.createRoom({
+    const created = await deps.store.createRoom({
       roomId: deps.ids.uuid(),
       slug,
       ...(body.name === undefined ? {} : { name: body.name }),
@@ -87,16 +101,16 @@ export function createApp(deps: ControlPlaneDeps, hub: RoomHub): Hono<{ Variable
     const sessionOrErr = requireSession({
       deps,
       auth,
-      session: auth.resolveSession(readSessionId(c.req.raw.headers)),
+      session: await auth.resolveSession(readSessionId(c.req.raw.headers)),
     });
     if (sessionOrErr instanceof Response) return sessionOrErr;
     const session = sessionOrErr;
     const roomId = c.req.param("roomId");
-    const room = deps.store.getRoom(roomId);
+    const room = await deps.store.getRoom(roomId);
     if (!room) {
       return jsonError(huddleError("INTERNAL", "room not found", "room_missing"), 404);
     }
-    const member = deps.store.getActiveMemberByUser(roomId, session.userId);
+    const member = await deps.store.getActiveMemberByUser(roomId, session.userId);
     if (!member) {
       return jsonError(
         huddleError("AUTHZ_PERMISSION_DENIED", "not a room member", "not_member"),
@@ -106,8 +120,8 @@ export function createApp(deps: ControlPlaneDeps, hub: RoomHub): Hono<{ Variable
     return c.json({
       room,
       member,
-      lease: deps.store.getDriverLease(roomId),
-      members: deps.store.listMembers(roomId),
+      lease: await deps.store.getDriverLease(roomId),
+      members: await deps.store.listMembers(roomId),
     });
   });
 
@@ -115,19 +129,19 @@ export function createApp(deps: ControlPlaneDeps, hub: RoomHub): Hono<{ Variable
     const sessionOrErr = requireSession({
       deps,
       auth,
-      session: auth.resolveSession(readSessionId(c.req.raw.headers)),
+      session: await auth.resolveSession(readSessionId(c.req.raw.headers)),
     });
     if (sessionOrErr instanceof Response) return sessionOrErr;
     const session = sessionOrErr;
     const roomId = c.req.param("roomId");
-    const member = deps.store.getActiveMemberByUser(roomId, session.userId);
+    const member = await deps.store.getActiveMemberByUser(roomId, session.userId);
     if (!member) {
       return jsonError(
         huddleError("AUTHZ_PERMISSION_DENIED", "not a room member", "not_member"),
         403,
       );
     }
-    const room = deps.store.getRoom(roomId);
+    const room = await deps.store.getRoom(roomId);
     if (!room) {
       return jsonError(huddleError("INTERNAL", "room not found", "room_missing"), 404);
     }
@@ -143,7 +157,7 @@ export function createApp(deps: ControlPlaneDeps, hub: RoomHub): Hono<{ Variable
     }
     const expected =
       body.expectedMembershipVersion ?? room.membershipVersion;
-    const invite = deps.store.createInvite({
+    const invite = await deps.store.createInvite({
       inviteId: deps.ids.uuid(),
       roomId,
       token: deps.ids.uuid(),
@@ -172,19 +186,19 @@ export function createApp(deps: ControlPlaneDeps, hub: RoomHub): Hono<{ Variable
     const sessionOrErr = requireSession({
       deps,
       auth,
-      session: auth.resolveSession(readSessionId(c.req.raw.headers)),
+      session: await auth.resolveSession(readSessionId(c.req.raw.headers)),
     });
     if (sessionOrErr instanceof Response) return sessionOrErr;
     const session = sessionOrErr;
     const roomId = c.req.param("roomId");
-    const member = deps.store.getActiveMemberByUser(roomId, session.userId);
+    const member = await deps.store.getActiveMemberByUser(roomId, session.userId);
     if (!member || member.role !== "owner") {
       return jsonError(
         huddleError("AUTHZ_CAPABILITY_MISSING", "member.manage required", "cap_missing"),
         403,
       );
     }
-    const room = deps.store.getRoom(roomId);
+    const room = await deps.store.getRoom(roomId);
     if (!room) {
       return jsonError(huddleError("INTERNAL", "room not found", "room_missing"), 404);
     }
@@ -195,7 +209,7 @@ export function createApp(deps: ControlPlaneDeps, hub: RoomHub): Hono<{ Variable
     if (!body.inviteId) {
       return jsonError(huddleError("INTERNAL", "inviteId required", "bad_request"), 400);
     }
-    const ok = deps.store.revokeInvite(
+    const ok = await deps.store.revokeInvite(
       roomId,
       body.inviteId,
       body.expectedMembershipVersion ?? room.membershipVersion,
@@ -207,7 +221,7 @@ export function createApp(deps: ControlPlaneDeps, hub: RoomHub): Hono<{ Variable
     const sessionOrErr = requireSession({
       deps,
       auth,
-      session: auth.resolveSession(readSessionId(c.req.raw.headers)),
+      session: await auth.resolveSession(readSessionId(c.req.raw.headers)),
     });
     if (sessionOrErr instanceof Response) return sessionOrErr;
     const session = sessionOrErr;
@@ -216,7 +230,7 @@ export function createApp(deps: ControlPlaneDeps, hub: RoomHub): Hono<{ Variable
     if (!body.token) {
       return jsonError(huddleError("INTERNAL", "token required", "bad_request"), 400);
     }
-    const result = deps.store.joinWithInvite({
+    const result = await deps.store.joinWithInvite({
       roomId,
       inviteToken: body.token,
       memberId: deps.ids.uuid(),
@@ -238,13 +252,13 @@ export function createApp(deps: ControlPlaneDeps, hub: RoomHub): Hono<{ Variable
     const sessionOrErr = requireSession({
       deps,
       auth,
-      session: auth.resolveSession(readSessionId(c.req.raw.headers)),
+      session: await auth.resolveSession(readSessionId(c.req.raw.headers)),
     });
     if (sessionOrErr instanceof Response) return sessionOrErr;
     const session = sessionOrErr;
     const roomId = c.req.param("roomId");
-    const member = deps.store.getActiveMemberByUser(roomId, session.userId);
-    const room = deps.store.getRoom(roomId);
+    const member = await deps.store.getActiveMemberByUser(roomId, session.userId);
+    const room = await deps.store.getRoom(roomId);
     if (!member || !room) {
       return jsonError(huddleError("AUTHZ_PERMISSION_DENIED", "not a room member", "not_member"), 403);
     }
@@ -254,7 +268,7 @@ export function createApp(deps: ControlPlaneDeps, hub: RoomHub): Hono<{ Variable
     };
     const mutationId = body.mutationId ?? deps.ids.mutationId();
     const payload = { archive: true };
-    const result = deps.store.commitMutation({
+    const result = await deps.store.commitMutation({
       mutationId,
       roomId,
       nowIso: deps.clock.nowIso(),
@@ -287,12 +301,12 @@ export function createApp(deps: ControlPlaneDeps, hub: RoomHub): Hono<{ Variable
     const sessionOrErr = requireSession({
       deps,
       auth,
-      session: auth.resolveSession(readSessionId(c.req.raw.headers)),
+      session: await auth.resolveSession(readSessionId(c.req.raw.headers)),
     });
     if (sessionOrErr instanceof Response) return sessionOrErr;
     const session = sessionOrErr;
     const roomId = c.req.param("roomId");
-    const member = deps.store.getActiveMemberByUser(roomId, session.userId);
+    const member = await deps.store.getActiveMemberByUser(roomId, session.userId);
     if (!member) {
       return jsonError(
         huddleError("AUTHZ_PERMISSION_DENIED", "not a room member", "not_member"),
@@ -309,7 +323,7 @@ export function createApp(deps: ControlPlaneDeps, hub: RoomHub): Hono<{ Variable
       }
       afterSequence = decoded.afterSequence;
     }
-    const page = deps.store.getEventsAfter(roomId, afterSequence, {
+    const page = await deps.store.getEventsAfter(roomId, afterSequence, {
       limitBytes: Number.isFinite(limitBytes) ? limitBytes : 2 * 1024 * 1024,
       visibility: visibilityForRole(member.role),
     });
@@ -320,13 +334,13 @@ export function createApp(deps: ControlPlaneDeps, hub: RoomHub): Hono<{ Variable
     const sessionOrErr = requireSession({
       deps,
       auth,
-      session: auth.resolveSession(readSessionId(c.req.raw.headers)),
+      session: await auth.resolveSession(readSessionId(c.req.raw.headers)),
     });
     if (sessionOrErr instanceof Response) return sessionOrErr;
     const session = sessionOrErr;
     const roomId = c.req.param("roomId");
-    const member = deps.store.getActiveMemberByUser(roomId, session.userId);
-    const room = deps.store.getRoom(roomId);
+    const member = await deps.store.getActiveMemberByUser(roomId, session.userId);
+    const room = await deps.store.getRoom(roomId);
     if (!member || !room) {
       return jsonError(huddleError("AUTHZ_PERMISSION_DENIED", "not a room member", "not_member"), 403);
     }
@@ -344,7 +358,7 @@ export function createApp(deps: ControlPlaneDeps, hub: RoomHub): Hono<{ Variable
     const mutationId = body.mutationId ?? deps.ids.mutationId();
     const hashBody = { ...body, mutationId: undefined };
     const event = buildInputEvent(deps, member.memberId, session.displayName, body);
-    const result = deps.store.commitMutation({
+    const result = await deps.store.commitMutation({
       mutationId,
       roomId,
       nowIso: deps.clock.nowIso(),
@@ -369,14 +383,14 @@ export function createApp(deps: ControlPlaneDeps, hub: RoomHub): Hono<{ Variable
     const sessionOrErr = requireSession({
       deps,
       auth,
-      session: auth.resolveSession(readSessionId(c.req.raw.headers)),
+      session: await auth.resolveSession(readSessionId(c.req.raw.headers)),
     });
     if (sessionOrErr instanceof Response) return sessionOrErr;
     const session = sessionOrErr;
     const roomId = c.req.param("roomId");
-    const member = deps.store.getActiveMemberByUser(roomId, session.userId);
-    const room = deps.store.getRoom(roomId);
-    const lease = deps.store.getDriverLease(roomId);
+    const member = await deps.store.getActiveMemberByUser(roomId, session.userId);
+    const room = await deps.store.getRoom(roomId);
+    const lease = await deps.store.getDriverLease(roomId);
     if (!member || !room || !lease) {
       return jsonError(huddleError("AUTHZ_PERMISSION_DENIED", "not a room member", "not_member"), 403);
     }
@@ -401,7 +415,7 @@ export function createApp(deps: ControlPlaneDeps, hub: RoomHub): Hono<{ Variable
         409,
       );
     }
-    const result = deps.store.commitMutation({
+    const result = await deps.store.commitMutation({
       mutationId,
       roomId,
       nowIso: deps.clock.nowIso(),
@@ -447,14 +461,14 @@ export function createApp(deps: ControlPlaneDeps, hub: RoomHub): Hono<{ Variable
     const sessionOrErr = requireSession({
       deps,
       auth,
-      session: auth.resolveSession(readSessionId(c.req.raw.headers)),
+      session: await auth.resolveSession(readSessionId(c.req.raw.headers)),
     });
     if (sessionOrErr instanceof Response) return sessionOrErr;
     const session = sessionOrErr;
     const roomId = c.req.param("roomId");
-    const member = deps.store.getActiveMemberByUser(roomId, session.userId);
-    const room = deps.store.getRoom(roomId);
-    const lease = deps.store.getDriverLease(roomId);
+    const member = await deps.store.getActiveMemberByUser(roomId, session.userId);
+    const room = await deps.store.getRoom(roomId);
+    const lease = await deps.store.getDriverLease(roomId);
     if (!member || !room || !lease) {
       return jsonError(huddleError("AUTHZ_PERMISSION_DENIED", "not a room member", "not_member"), 403);
     }
@@ -483,7 +497,7 @@ export function createApp(deps: ControlPlaneDeps, hub: RoomHub): Hono<{ Variable
       );
     }
     const expiresAt = new Date(deps.clock.nowMs() + 60 * 60 * 1000).toISOString();
-    const result = deps.store.commitMutation({
+    const result = await deps.store.commitMutation({
       mutationId,
       roomId,
       nowIso: deps.clock.nowIso(),
@@ -525,14 +539,14 @@ export function createApp(deps: ControlPlaneDeps, hub: RoomHub): Hono<{ Variable
     const sessionOrErr = requireSession({
       deps,
       auth,
-      session: auth.resolveSession(readSessionId(c.req.raw.headers)),
+      session: await auth.resolveSession(readSessionId(c.req.raw.headers)),
     });
     if (sessionOrErr instanceof Response) return sessionOrErr;
     const session = sessionOrErr;
     const roomId = c.req.param("roomId");
     const approvalId = c.req.param("approvalId");
-    const member = deps.store.getActiveMemberByUser(roomId, session.userId);
-    const room = deps.store.getRoom(roomId);
+    const member = await deps.store.getActiveMemberByUser(roomId, session.userId);
+    const room = await deps.store.getRoom(roomId);
     if (!member || !room) {
       return jsonError(huddleError("AUTHZ_PERMISSION_DENIED", "not a room member", "not_member"), 403);
     }
@@ -540,12 +554,21 @@ export function createApp(deps: ControlPlaneDeps, hub: RoomHub): Hono<{ Variable
       mutationId?: string;
       decision: "allow" | "deny" | "cancel";
       category: string;
-      evidenceDigest: string;
+      evidenceDigest?: string;
+      /** Optional signed evidence from the runner; CP stores digest only (no crypto verify). */
+      signedEvidence?: SignedApprovalEvidence;
       expectedMembershipVersion?: number;
     };
+    const evidenceDigest = formatEvidenceDigest(body);
+    if (!evidenceDigest) {
+      return jsonError(
+        huddleError("INTERNAL", "evidenceDigest or signedEvidence required", "bad_request"),
+        400,
+      );
+    }
     const capability = approvalCapability(body.category);
     const mutationId = body.mutationId ?? deps.ids.mutationId();
-    const result = deps.store.commitMutation({
+    const result = await deps.store.commitMutation({
       mutationId,
       roomId,
       nowIso: deps.clock.nowIso(),
@@ -563,7 +586,7 @@ export function createApp(deps: ControlPlaneDeps, hub: RoomHub): Hono<{ Variable
           payload: {
             approvalId,
             decision: body.decision,
-            evidenceDigest: body.evidenceDigest,
+            evidenceDigest,
           },
           actor: { type: "member", id: member.memberId, displayName: session.displayName },
           visibility: "approvers",
@@ -573,8 +596,8 @@ export function createApp(deps: ControlPlaneDeps, hub: RoomHub): Hono<{ Variable
         roomId,
         approvalId,
         category: body.category,
-        evidenceDigest: body.evidenceDigest,
-        requestNonce: deps.ids.uuid(),
+        evidenceDigest,
+        requestNonce: body.signedEvidence?.requestNonce ?? deps.ids.uuid(),
         status: "resolved",
         decision: body.decision,
         resolverMemberId: member.memberId,
@@ -587,29 +610,195 @@ export function createApp(deps: ControlPlaneDeps, hub: RoomHub): Hono<{ Variable
     return c.json({ receipt: result.receipt, events: result.events });
   });
 
+  app.post("/v1/rooms/:roomId/driver/reclaim", async (c) => {
+    const sessionOrErr = requireSession({
+      deps,
+      auth,
+      session: await auth.resolveSession(readSessionId(c.req.raw.headers)),
+    });
+    if (sessionOrErr instanceof Response) return sessionOrErr;
+    const session = sessionOrErr;
+    const roomId = c.req.param("roomId");
+    const member = await deps.store.getActiveMemberByUser(roomId, session.userId);
+    const room = await deps.store.getRoom(roomId);
+    const lease = await deps.store.getDriverLease(roomId);
+    if (!member || !room || !lease) {
+      return jsonError(huddleError("AUTHZ_PERMISSION_DENIED", "not a room member", "not_member"), 403);
+    }
+    const body = (await c.req.json().catch(() => ({}))) as {
+      mutationId?: string;
+      expectedMembershipVersion?: number;
+      expectedLeaseVersion?: number;
+    };
+    let snap = {
+      state: lease.state,
+      memberId: lease.memberId,
+      leaseVersion: lease.leaseVersion,
+    };
+    if (snap.state !== "unassigned") {
+      const revoked = transitionDriverLease(snap, "revoke");
+      if (!revoked.ok) {
+        return jsonError(
+          huddleError("STATE_INVALID_TRANSITION", "reclaim revoke failed", "driver_bad_state"),
+          409,
+        );
+      }
+      snap = revoked.state;
+    }
+    const granted = transitionDriverLease(snap, "grant", member.memberId);
+    if (!granted.ok) {
+      return jsonError(
+        huddleError("STATE_INVALID_TRANSITION", "reclaim grant failed", "driver_bad_state"),
+        409,
+      );
+    }
+    const mutationId = body.mutationId ?? deps.ids.mutationId();
+    const expiresAt = new Date(deps.clock.nowMs() + 60 * 60 * 1000).toISOString();
+    const result = await deps.store.commitMutation({
+      mutationId,
+      roomId,
+      nowIso: deps.clock.nowIso(),
+      requestHash: requestHash(body),
+      auth: {
+        memberId: member.memberId,
+        role: member.role,
+        capability: "driver.reclaim",
+        expectedMembershipVersion: body.expectedMembershipVersion ?? room.membershipVersion,
+        ...(body.expectedLeaseVersion === undefined
+          ? {}
+          : { expectedLeaseVersion: body.expectedLeaseVersion }),
+      },
+      events: [
+        {
+          eventId: deps.ids.eventId(),
+          type: "driver.changed",
+          payload: {
+            memberId: member.memberId,
+            leaseVersion: granted.state.leaseVersion,
+          },
+          actor: { type: "member", id: member.memberId, displayName: session.displayName },
+          visibility: "room",
+        },
+      ],
+      leaseUpdate: {
+        state: granted.state.state,
+        memberId: granted.state.memberId,
+        leaseVersion: granted.state.leaseVersion,
+        acquiredAt: deps.clock.nowIso(),
+        expiresAt,
+        lastActivityAt: deps.clock.nowIso(),
+      },
+    });
+    if (!result.ok) return mutationError(result.code, result.message);
+    hub.drainRoom(roomId);
+    return c.json({ receipt: result.receipt, events: result.events, lease: granted.state });
+  });
+
+  app.post("/v1/rooms/:roomId/runner/ingest", async (c) => {
+    const sessionOrErr = requireSession({
+      deps,
+      auth,
+      session: await auth.resolveSession(readSessionId(c.req.raw.headers)),
+    });
+    if (sessionOrErr instanceof Response) return sessionOrErr;
+    const roomId = c.req.param("roomId");
+    const body = (await c.req.json()) as {
+      roomIncarnation?: string;
+      runnerEpoch?: number;
+      recordId?: string;
+      events?: Array<{
+        eventId?: string;
+        type: string;
+        payload: unknown;
+        actor: { type: "member" | "runner" | "system"; id: string; displayName?: string };
+        visibility?: "room" | "approvers" | "owner";
+        causationId?: string;
+        correlationId?: string;
+        provider?: string;
+      }>;
+    };
+    if (
+      !body.roomIncarnation ||
+      typeof body.runnerEpoch !== "number" ||
+      !body.recordId ||
+      !Array.isArray(body.events)
+    ) {
+      return jsonError(
+        huddleError("INTERNAL", "roomIncarnation, runnerEpoch, recordId, events required", "bad_request"),
+        400,
+      );
+    }
+    const roomIncarnation = body.roomIncarnation;
+    const runnerEpoch = body.runnerEpoch;
+    const recordId = body.recordId;
+    const ingestEvents = body.events;
+    const result = await deps.store.ingestRunnerEvents({
+      roomId,
+      roomIncarnation,
+      runnerEpoch,
+      recordId,
+      nowIso: deps.clock.nowIso(),
+      events: ingestEvents.map((ev) => {
+        const base = {
+          eventId: ev.eventId ?? deps.ids.eventId(),
+          type: ev.type as import("@huddle/protocol").RoomEvent["type"],
+          payload: ev.payload as import("@huddle/protocol").RoomEvent["payload"],
+          actor: ev.actor,
+          runnerEpoch,
+        };
+        return {
+          ...base,
+          ...(ev.visibility === undefined ? {} : { visibility: ev.visibility }),
+          ...(ev.causationId === undefined ? {} : { causationId: ev.causationId }),
+          ...(ev.correlationId === undefined ? {} : { correlationId: ev.correlationId }),
+          ...(ev.provider === undefined
+            ? {}
+            : { provider: ev.provider as import("@huddle/protocol").RoomEvent["provider"] }),
+        };
+      }),
+    });
+    if (!result.ok) {
+      const status =
+        result.code === "room_not_found" ? 404 : result.code === "epoch_mismatch" ? 409 : 409;
+      return jsonError(
+        huddleError(
+          result.code === "epoch_mismatch" ? "RUNNER_EPOCH_STALE" : "STATE_INVALID_TRANSITION",
+          result.message,
+          result.code,
+        ),
+        status,
+      );
+    }
+    hub.drainRoom(roomId);
+    return c.json({
+      lastAckedRecordId: result.lastAckedRecordId,
+      serverCursor: result.serverCursor,
+    });
+  });
+
   /** Issue a short-lived WS ticket for browser stream. */
   app.get("/v1/rooms/:roomId/stream", async (c) => {
     const sessionOrErr = requireSession({
       deps,
       auth,
-      session: auth.resolveSession(readSessionId(c.req.raw.headers)),
+      session: await auth.resolveSession(readSessionId(c.req.raw.headers)),
     });
     if (sessionOrErr instanceof Response) return sessionOrErr;
     const session = sessionOrErr;
     const roomId = c.req.param("roomId");
-    const member = deps.store.getActiveMemberByUser(roomId, session.userId);
+    const member = await deps.store.getActiveMemberByUser(roomId, session.userId);
     if (!member) {
       return jsonError(
         huddleError("AUTHZ_PERMISSION_DENIED", "not a room member", "not_member"),
         403,
       );
     }
-    const ticket = mintWsTicket(deps, {
+    const ticket = await mintWsTicket(deps, {
       roomId,
       subjectType: "member",
       subjectId: member.memberId,
     });
-    const highWaterMark = deps.store.getHighWaterMark(roomId);
+    const highWaterMark = await deps.store.getHighWaterMark(roomId);
     return c.json({
       ticket: ticket.id,
       expiresAt: ticket.expiresAt,
@@ -622,7 +811,7 @@ export function createApp(deps: ControlPlaneDeps, hub: RoomHub): Hono<{ Variable
     const sessionOrErr = requireSession({
       deps,
       auth,
-      session: auth.resolveSession(readSessionId(c.req.raw.headers)),
+      session: await auth.resolveSession(readSessionId(c.req.raw.headers)),
     });
     if (sessionOrErr instanceof Response) return sessionOrErr;
     const roomId = c.req.query("roomId");
@@ -630,14 +819,14 @@ export function createApp(deps: ControlPlaneDeps, hub: RoomHub): Hono<{ Variable
       return jsonError(huddleError("INTERNAL", "roomId required", "bad_request"), 400);
     }
     const expectedEpoch = Number(c.req.query("expectedEpoch") ?? 0);
-    const newEpoch = deps.store.casRunnerEpoch(roomId, expectedEpoch, deps.clock.nowIso());
+    const newEpoch = await deps.store.casRunnerEpoch(roomId, expectedEpoch, deps.clock.nowIso());
     if (newEpoch === null) {
       return jsonError(
         huddleError("RUNNER_EPOCH_STALE", "stale runner epoch", "epoch_stale"),
         409,
       );
     }
-    const ticket = mintWsTicket(deps, {
+    const ticket = await mintWsTicket(deps, {
       roomId,
       subjectType: "runner",
       subjectId: `runner-epoch-${newEpoch}`,
@@ -645,12 +834,25 @@ export function createApp(deps: ControlPlaneDeps, hub: RoomHub): Hono<{ Variable
     return c.json({
       ticket: ticket.id,
       runnerEpoch: newEpoch,
-      highWaterMark: deps.store.getHighWaterMark(roomId),
+      highWaterMark: await deps.store.getHighWaterMark(roomId),
       wsPath: `/v1/ws?ticket=${encodeURIComponent(ticket.id)}`,
     });
   });
 
   return app;
+}
+
+/** Store digest as `algorithm:hex` when signedEvidence is provided. CP does not verify crypto. */
+function formatEvidenceDigest(body: {
+  evidenceDigest?: string;
+  signedEvidence?: SignedApprovalEvidence;
+}): string | null {
+  if (body.signedEvidence?.evidenceDigest) {
+    const d = body.signedEvidence.evidenceDigest;
+    return `${d.algorithm}:${d.hex}`;
+  }
+  if (body.evidenceDigest && body.evidenceDigest.length > 0) return body.evidenceDigest;
+  return null;
 }
 
 function mutationError(code: string, message: string): Response {

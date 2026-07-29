@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import type { Capability, MembershipRole } from "@huddle/authz";
 import type { ControlPlaneStore } from "@huddle/persistence";
 import type { Clock, IdGenerator } from "@huddle/testkit";
@@ -32,14 +32,14 @@ export class FakeAuthService {
    * Mint or reuse a fake identity session.
    * Header: `x-huddle-user: userId[:displayName]`
    */
-  ensureSession(identityHeader: string | undefined): AuthSession {
+  async ensureSession(identityHeader: string | undefined): Promise<AuthSession> {
     const raw = identityHeader?.trim() || "alice:Alice";
     const [userIdPart, ...rest] = raw.split(":");
     const userId = userIdPart && userIdPart.length > 0 ? userIdPart : "alice";
     const displayName = rest.length > 0 ? rest.join(":") : userId;
 
     const now = this.clock.nowIso();
-    this.store.upsertUser({
+    await this.store.upsertUser({
       id: userId,
       displayName,
       createdAt: now,
@@ -47,7 +47,7 @@ export class FakeAuthService {
 
     const sessionId = this.ids.uuid();
     const expiresAt = new Date(this.clock.nowMs() + SESSION_TTL_MS).toISOString();
-    this.store.createSession({
+    await this.store.createSession({
       id: sessionId,
       userId,
       expiresAt,
@@ -57,21 +57,48 @@ export class FakeAuthService {
     return { sessionId, userId, displayName, expiresAt };
   }
 
-  resolveSession(sessionId: string | undefined): AuthSession | null {
+  async resolveSession(sessionId: string | undefined): Promise<AuthSession | null> {
     if (!sessionId) return null;
-    const session = this.store.getSession(sessionId);
+    const session = await this.store.getSession(sessionId);
     if (!session) return null;
     if (Date.parse(this.clock.nowIso()) > Date.parse(session.expiresAt)) {
-      this.store.deleteSession(sessionId);
+      await this.store.deleteSession(sessionId);
       return null;
     }
-    const user = this.store.getUser(session.userId);
+    const user = await this.store.getUser(session.userId);
     if (!user) return null;
     return {
       sessionId: session.id,
       userId: user.id,
       displayName: user.displayName,
       expiresAt: session.expiresAt,
+    };
+  }
+
+  /** Create a session for an already-resolved identity (e.g. GitHub OAuth). */
+  async createSessionForUser(user: {
+    userId: string;
+    displayName: string;
+  }): Promise<AuthSession> {
+    const now = this.clock.nowIso();
+    await this.store.upsertUser({
+      id: user.userId,
+      displayName: user.displayName,
+      createdAt: now,
+    });
+    const sessionId = this.ids.uuid();
+    const expiresAt = new Date(this.clock.nowMs() + SESSION_TTL_MS).toISOString();
+    await this.store.createSession({
+      id: sessionId,
+      userId: user.userId,
+      expiresAt,
+      createdAt: now,
+    });
+    return {
+      sessionId,
+      userId: user.userId,
+      displayName: user.displayName,
+      expiresAt,
     };
   }
 }
@@ -102,3 +129,7 @@ export type MemberContext = {
   userId: string;
   displayName: string | null;
 };
+
+export function newStateToken(): string {
+  return randomBytes(16).toString("hex");
+}
