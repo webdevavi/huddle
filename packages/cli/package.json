@@ -1,7 +1,7 @@
 {
   "name": "@huddle/cli",
   "version": "0.0.0",
-  "private": true,
+  "private": false,
   "type": "module",
   "bin": {
     "huddle": "./dist/bin.js"
@@ -15,11 +15,15 @@
     }
   },
   "files": ["dist"],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "typecheck": "tsc -b",
     "test": "vitest run"
   },
   "dependencies": {
+    "@huddle/codex-adapter": "workspace:*",
     "@huddle/runner-core": "workspace:*"
   },
   "devDependencies": {

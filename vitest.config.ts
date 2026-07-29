@@ -14,6 +14,8 @@ export default defineConfig({
       "@huddle/codex-adapter": path.join(root, "packages/codex-adapter/src/index.ts"),
       "@huddle/runner-core": path.join(root, "packages/runner-core/src/index.ts"),
       "@huddle/persistence": path.join(root, "packages/persistence/src/index.ts"),
+      "@huddle/analytics": path.join(root, "packages/analytics/src/index.ts"),
+      "@huddle/opencode-adapter": path.join(root, "packages/opencode-adapter/src/index.ts"),
       "@huddle/control-plane": path.join(root, "apps/control-plane/src/index.ts"),
     },
   },

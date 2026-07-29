@@ -1,0 +1,16 @@
+# Ignore bulky / non-runtime paths when building the control-plane image.
+node_modules
+**/node_modules
+**/dist
+.git
+.github
+apps/web
+packages/cli
+packages/codex-adapter
+packages/runner-core
+packages/huddle
+packages/analytics
+packages/opencode-adapter
+**/*.test.ts
+**/.huddle
+**/coverage

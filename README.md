@@ -57,7 +57,10 @@ packages/testkit          Fake clock/IDs and fault-transport helpers
 packages/runner-core      Local WAL, worktree, policy, redaction, fencing
 packages/codex-adapter    Codex App Server adapter + fake fixtures
 packages/persistence      SQLite store + Postgres ports
-deploy/container          Control-plane container stub + env docs
+packages/analytics        Content-free funnel + phase-gate scorecard
+packages/opencode-adapter OpenCode adapter skeleton (Phase 3)
+packages/huddle           Public `npx huddle` bin wrapper
+deploy/container          Control-plane container + compose
 deploy/migrations         SQL schema
 ```
 
@@ -71,6 +74,8 @@ deploy/migrations         SQL schema
 | Roles / driver / approvals | [`docs/concepts/roles-driver-approvals.md`](docs/concepts/roles-driver-approvals.md) |
 | Self-host quickstart | [`docs/self-host/quickstart.md`](docs/self-host/quickstart.md) |
 | Self-host configuration | [`docs/self-host/configuration.md`](docs/self-host/configuration.md) |
+| GitHub OAuth | [`docs/self-host/oauth.md`](docs/self-host/oauth.md) |
+| Phase 1 product gate | [`docs/beta/phase-1-gate.md`](docs/beta/phase-1-gate.md) |
 
 ## Development
 
@@ -144,16 +149,22 @@ pnpm huddle --server http://127.0.0.1:8787 codex --non-interactive --no-open --n
 # then open http://127.0.0.1:5173/#/join?room=<room.id>
 ```
 
-## Self-host container stub
+## Self-host control plane
 
 ```bash
-cd deploy/container
-cp .env.example .env
-docker compose up --build
+docker build -f deploy/container/Dockerfile -t huddle-control-plane:local .
+# or
+cd deploy/container && cp .env.example .env && docker compose up --build
 ```
 
-SQLite default path: `sqlite:///data/huddle.db` on volume `huddle-data`. See
-[`deploy/container/README.md`](deploy/container/README.md).
+SQLite default: `/data/huddle.db` on volume `huddle-data`. See
+[`deploy/container/README.md`](deploy/container/README.md) and
+[`docs/self-host/oauth.md`](docs/self-host/oauth.md).
+
+```bash
+pnpm test:gate          # synthetic phase-gate scorecard
+pnpm test:codex-smoke   # Codex PATH detection
+```
 
 ## License
 

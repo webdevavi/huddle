@@ -23,6 +23,12 @@
       "path": "packages/persistence"
     },
     {
+      "path": "packages/analytics"
+    },
+    {
+      "path": "packages/opencode-adapter"
+    },
+    {
       "path": "apps/web"
     },
     {

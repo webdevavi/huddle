@@ -6,6 +6,7 @@ import {
 import type { ApprovalVerifier, EvidenceDigester, SignedApprovalEvidence } from "@huddle/authz";
 import {
   CodexAdapter,
+  SUPPORTED_CODEX_APP_SERVER,
   buildApprovalDecisionResponse,
   type CodexApprovalRequest,
   type TranslationResult,
@@ -24,17 +25,28 @@ import {
 import { FramedWal } from "./wal/index.js";
 import type { WalRecordType } from "./wal/format.js";
 import { rejectWorkspaceEscape } from "./paths.js";
+import {
+  spawnCodexAppServer,
+  type CodexAppServerProcess,
+} from "./codex-process.js";
 
 export type RunnerCoreOptions = {
   roomId: string;
   fence: RunnerFence;
-  codexVersion: string;
+  /**
+   * Codex App Server protocol version for adapter pin checks.
+   * Defaults to the pinned fixture version — not the CLI binary version.
+   */
+  codexVersion?: string;
   fs?: FsPort;
   sync?: OutboundSyncClient;
   digester?: EvidenceDigester;
   verifier?: ApprovalVerifier;
   env?: NodeJS.ProcessEnv;
   worktreeRoot?: string;
+  /** When true, spawn `codex app-server` and wire JSONL to the adapter. */
+  spawnAppServer?: boolean;
+  codexPath?: string;
 };
 
 export type RunnerHandle = {
@@ -44,6 +56,7 @@ export type RunnerHandle = {
   lock: RoomLock;
   sync: OutboundSyncClient;
   storageUnavailable: boolean;
+  process: CodexAppServerProcess | null;
   close(): Promise<void>;
   appendDurable(recordId: string, recordType: WalRecordType, body: unknown): Promise<void>;
   handleTranslation(
@@ -69,6 +82,7 @@ export async function startRunnerCore(options: RunnerCoreOptions): Promise<Runne
   const fs = options.fs ?? new NodeFsPort();
   const env = options.env ?? process.env;
   const sync = options.sync ?? new FakeOutboundSyncClient();
+  const codexVersion = options.codexVersion ?? SUPPORTED_CODEX_APP_SERVER.pinned;
 
   const lockResult = await acquireRoomLock(options.roomId, options.fence, fs, env);
   if (!lockResult.ok) {
@@ -82,9 +96,29 @@ export async function startRunnerCore(options: RunnerCoreOptions): Promise<Runne
   }
 
   const adapter = new CodexAdapter({
-    version: options.codexVersion,
+    version: codexVersion,
     diagnosticId: `runner-${options.roomId}`,
   });
+
+  let appServer: CodexAppServerProcess | null = null;
+  if (options.spawnAppServer) {
+    try {
+      appServer = spawnCodexAppServer({
+        worktreeRoot: options.worktreeRoot ?? process.cwd(),
+        env,
+        ...(options.codexPath ? { codexPath: options.codexPath } : {}),
+      });
+      appServer.child.stdout.setEncoding("utf8");
+      appServer.child.stdout.on("data", (chunk: string) => {
+        adapter.pushInbound(chunk);
+      });
+      const init = adapter.buildInitializeRequest();
+      appServer.child.stdin.write(adapter.encode(init));
+    } catch (err) {
+      await lockResult.lock.release();
+      throw err;
+    }
+  }
 
   let storageUnavailable = false;
   const wal = walResult.wal;
@@ -96,10 +130,12 @@ export async function startRunnerCore(options: RunnerCoreOptions): Promise<Runne
     adapter,
     lock,
     sync,
+    process: appServer,
     get storageUnavailable() {
       return storageUnavailable || wal.disabled;
     },
     async close() {
+      appServer?.kill();
       await lock.release();
     },
     async appendDurable(recordId, recordType, body) {

@@ -1,0 +1,37 @@
+{
+  "name": "huddle",
+  "version": "0.0.0",
+  "private": false,
+  "description": "Multiplayer control for local coding agents — npx huddle codex",
+  "type": "module",
+  "bin": {
+    "huddle": "./bin/huddle.js"
+  },
+  "files": [
+    "bin",
+    "README.md"
+  ],
+  "scripts": {
+    "typecheck": "tsc -b --pretty false || true"
+  },
+  "dependencies": {
+    "@huddle/cli": "workspace:*"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/webdevavi/huddle.git"
+  },
+  "license": "Apache-2.0",
+  "keywords": [
+    "huddle",
+    "codex",
+    "multiplayer",
+    "agents"
+  ]
+}

@@ -64,7 +64,7 @@ export async function runCodexCommand(ctx: CommandContext): Promise<CommandResul
     const error = createDxError("HUDDLE-CODEX-001", {
       details: {
         found: preflight.codex.version ?? "unknown",
-        supported: "0.145.x",
+        supported: ">=0.145.0",
         ...(preflight.codex.path ? { path: preflight.codex.path } : {}),
       },
     });

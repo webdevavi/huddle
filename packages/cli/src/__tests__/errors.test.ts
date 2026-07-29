@@ -12,7 +12,7 @@ describe("DX error catalog", () => {
   it("renders actionable text without leaking unsafe fields by default", () => {
     resetDiagnosticIds();
     const error = createDxError("HUDDLE-CODEX-001", {
-      details: { found: "0.144.0", supported: "0.145.x", path: "/usr/local/bin/codex", secret: "nope" },
+      details: { found: "0.144.0", supported: ">=0.145.0", path: "/usr/local/bin/codex", secret: "nope" },
       diagnosticId: "hd_TEST",
     });
     const text = renderDxError(error, { json: false, verbose: false, color: false });

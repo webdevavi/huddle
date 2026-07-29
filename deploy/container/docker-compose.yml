@@ -1,21 +1,44 @@
-# Self-host control-plane stub. Runner remains on the host next to the repo.
+# Self-host control plane. Runner remains on the host next to the repo.
 services:
+  db:
+    image: postgres:16-alpine
+    profiles: ["postgres"]
+    environment:
+      POSTGRES_USER: huddle
+      POSTGRES_PASSWORD: huddle
+      POSTGRES_DB: huddle
+    volumes:
+      - huddle-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U huddle -d huddle"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   control-plane:
-    build: .
-    image: huddle-control-plane:stub
+    build:
+      context: ../..
+      dockerfile: deploy/container/Dockerfile
+    image: huddle-control-plane:local
     ports:
       - "${HUDDLE_PORT:-8080}:8080"
     environment:
+      HOST: 0.0.0.0
+      PORT: "8080"
       HUDDLE_HOST: 0.0.0.0
       HUDDLE_PORT: "8080"
-      HUDDLE_DATABASE_URL: ${HUDDLE_DATABASE_URL:-sqlite:///data/huddle.db}
       HUDDLE_BASE_URL: ${HUDDLE_BASE_URL:-http://localhost:8080}
+      HUDDLE_WEB_BASE_URL: ${HUDDLE_WEB_BASE_URL:-http://localhost:5173}
+      HUDDLE_DATABASE_URL: ${HUDDLE_DATABASE_URL:-sqlite:///data/huddle.db}
+      HUDDLE_SQLITE_PATH: /data/huddle.db
       HUDDLE_TELEMETRY: ${HUDDLE_TELEMETRY:-off}
       HUDDLE_DATA_DIR: /data
       HUDDLE_SESSION_SECRET: ${HUDDLE_SESSION_SECRET:-dev-only-change-me}
       HUDDLE_SIGNING_SECRET: ${HUDDLE_SIGNING_SECRET:-dev-only-change-me}
+      HUDDLE_GITHUB_CLIENT_ID: ${HUDDLE_GITHUB_CLIENT_ID:-}
+      HUDDLE_GITHUB_CLIENT_SECRET: ${HUDDLE_GITHUB_CLIENT_SECRET:-}
+      HUDDLE_MIGRATIONS_PATH: /app/deploy/migrations/001_control_plane.sql
     volumes:
-      # SQLite / local data volume — back up this path; see docs/self-host/
       - huddle-data:/data
     healthcheck:
       test:
@@ -23,11 +46,13 @@ services:
           "CMD",
           "node",
           "-e",
-          "fetch('http://127.0.0.1:8080/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+          "fetch('http://127.0.0.1:8080/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
         ]
       interval: 30s
       timeout: 3s
       retries: 3
+      start_period: 15s
 
 volumes:
   huddle-data:
+  huddle-pg:

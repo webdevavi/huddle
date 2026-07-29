@@ -1,0 +1,140 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Lint, typecheck, test
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: huddle
+          POSTGRES_PASSWORD: huddle
+          POSTGRES_DB: huddle_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U huddle -d huddle_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      HUDDLE_TEST_DATABASE_URL: postgres://huddle:huddle@localhost:5432/huddle_test
+      CI: "true"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.17.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Unit + integration tests
+        run: pnpm test
+
+      - name: Build web
+        run: pnpm build:web
+
+      - name: Local E2E (control plane + HTTP)
+        run: pnpm test:e2e
+
+      - name: Phase-gate synthetic scorecard
+        run: pnpm test:gate
+
+      - name: Codex detection smoke
+        run: |
+          npm install --prefix "$HOME/.huddle-codex" @openai/codex@0.146.0
+          export PATH="$HOME/.huddle-codex/node_modules/.bin:$PATH"
+          pnpm test:codex-smoke
+          HUDDLE_SPAWN_CODEX=1 pnpm test:codex-smoke
+
+  container:
+    name: Control-plane image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: validate
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build control-plane image
+        run: docker build -f deploy/container/Dockerfile -t huddle-control-plane:ci .
+
+      - name: Healthcheck smoke
+        run: |
+          docker run -d --name huddle-cp -p 18080:8080 \
+            -e HOST=0.0.0.0 \
+            -e PORT=8080 \
+            -e HUDDLE_SQLITE_PATH=/data/huddle.db \
+            -e HUDDLE_BASE_URL=http://127.0.0.1:18080 \
+            -e HUDDLE_TELEMETRY=off \
+            huddle-control-plane:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:18080/healthz >/dev/null; then
+              curl -fsS http://127.0.0.1:18080/readyz
+              docker rm -f huddle-cp
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs huddle-cp || true
+          docker rm -f huddle-cp || true
+          exit 1
+
+  publish-dry-run:
+    name: npm pack dry-run
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: validate
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.17.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build publishable packages
+        run: pnpm typecheck
+
+      - name: Pack huddle CLI package
+        run: |
+          pnpm --filter @huddle/protocol exec npm pack --dry-run
+          pnpm --filter @huddle/cli exec npm pack --dry-run
+          pnpm --filter huddle exec npm pack --dry-run

@@ -12,6 +12,131 @@ function baseUrl(serverUrl: string): string {
   return serverUrl.replace(/\/$/, "");
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function pollDeviceLogin(
+  server: string,
+  deviceCode: string,
+  intervalSec: number,
+  expiresInSec: number,
+  ctx: CommandContext,
+): Promise<CommandResult> {
+  const deadline = Date.now() + expiresInSec * 1000;
+  let intervalMs = Math.max(1, intervalSec) * 1000;
+
+  while (Date.now() < deadline) {
+    await sleep(intervalMs);
+    let res: Response;
+    try {
+      res = await fetch(`${server}/v1/auth/github/device/poll`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ deviceCode }),
+      });
+    } catch (err) {
+      const dx = createDxError("HUDDLE-AUTH-003", {
+        message: `Auth poll failed: ${err instanceof Error ? err.message : String(err)}`,
+      });
+      ctx.io.stderr(
+        renderDxError(dx, {
+          json: ctx.config.json,
+          verbose: ctx.config.verbose,
+          color: ctx.config.color,
+        }),
+      );
+      return { exitCode: catalogEntry(dx.code).exitCode };
+    }
+
+    if (res.status === 410 || res.status === 403) {
+      const dx = createDxError("HUDDLE-AUTH-003", {
+        message: `Device authorization ${res.status === 410 ? "expired" : "denied"}.`,
+      });
+      ctx.io.stderr(
+        renderDxError(dx, {
+          json: ctx.config.json,
+          verbose: ctx.config.verbose,
+          color: ctx.config.color,
+        }),
+      );
+      return { exitCode: catalogEntry(dx.code).exitCode };
+    }
+
+    if (!res.ok) {
+      const text = await res.text();
+      const dx = createDxError("HUDDLE-AUTH-003", {
+        message: `Auth poll failed (${res.status}): ${text}`,
+      });
+      ctx.io.stderr(
+        renderDxError(dx, {
+          json: ctx.config.json,
+          verbose: ctx.config.verbose,
+          color: ctx.config.color,
+        }),
+      );
+      return { exitCode: catalogEntry(dx.code).exitCode };
+    }
+
+    const body = (await res.json()) as {
+      status?: string;
+      interval?: number;
+      slowDown?: boolean;
+      session?: {
+        sessionId: string;
+        userId: string;
+        displayName: string;
+        expiresAt: string;
+      };
+    };
+
+    if (typeof body.interval === "number" && body.interval > 0) {
+      intervalMs = body.interval * 1000;
+    }
+    if (body.slowDown) {
+      intervalMs += 5_000;
+    }
+
+    if (body.status === "complete" && body.session) {
+      await writeSession({
+        sessionId: body.session.sessionId,
+        userId: body.session.userId,
+        displayName: body.session.displayName,
+        expiresAt: body.session.expiresAt,
+        serverUrl: server,
+      });
+      const message = `Signed in as ${body.session.displayName} (${body.session.userId}) via GitHub.`;
+      const data = {
+        ok: true,
+        version: 1,
+        command: "auth login",
+        mode: "github" as const,
+        message,
+        session: {
+          userId: body.session.userId,
+          displayName: body.session.displayName,
+          expiresAt: body.session.expiresAt,
+        },
+      };
+      if (ctx.config.json) ctx.io.stdout(JSON.stringify(data, null, 2));
+      else ctx.io.stdout(message);
+      return { exitCode: ExitCode.SUCCESS, data };
+    }
+  }
+
+  const dx = createDxError("HUDDLE-AUTH-003", {
+    message: "Device authorization timed out before completion.",
+  });
+  ctx.io.stderr(
+    renderDxError(dx, {
+      json: ctx.config.json,
+      verbose: ctx.config.verbose,
+      color: ctx.config.color,
+    }),
+  );
+  return { exitCode: catalogEntry(dx.code).exitCode };
+}
+
 export async function runAuthCommand(ctx: CommandContext): Promise<CommandResult> {
   const sub = ctx.args[1];
   if (!sub || !["login", "logout", "status"].includes(sub)) {
@@ -92,14 +217,64 @@ export async function runAuthCommand(ctx: CommandContext): Promise<CommandResult
   }
 
   if (mode === "github") {
-    const startUrl = `${server}/v1/auth/github/start`;
-    const message = ctx.config.openBrowser
-      ? `GitHub auth: open ${startUrl} to continue (browser open not automated in CLI yet).`
-      : `GitHub auth (--no-open): start at ${startUrl}`;
-    const data = { ok: true, version: 1, command: "auth login", mode, startUrl, message };
-    if (ctx.config.json) ctx.io.stdout(JSON.stringify(data, null, 2));
-    else ctx.io.stdout(message);
-    return { exitCode: ExitCode.SUCCESS, data };
+    const deviceRes = await fetch(`${server}/v1/auth/github/device`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    if (!deviceRes.ok) {
+      const text = await deviceRes.text();
+      const dx = createDxError("HUDDLE-AUTH-003", {
+        message: `GitHub device start failed (${deviceRes.status}): ${text}`,
+      });
+      ctx.io.stderr(
+        renderDxError(dx, {
+          json: ctx.config.json,
+          verbose: ctx.config.verbose,
+          color: ctx.config.color,
+        }),
+      );
+      return { exitCode: catalogEntry(dx.code).exitCode };
+    }
+
+    const device = (await deviceRes.json()) as {
+      deviceCode: string;
+      userCode: string;
+      verificationUri: string;
+      verificationUriComplete?: string;
+      expiresIn: number;
+      interval: number;
+    };
+
+    const openTarget = device.verificationUriComplete ?? device.verificationUri;
+    const lines = [
+      `GitHub device login`,
+      `  Code: ${device.userCode}`,
+      `  Open: ${openTarget}`,
+      ctx.config.openBrowser
+        ? "Complete authorization in the browser, then return here."
+        : "Open the URL above (--no-open), enter the code, then wait.",
+    ];
+    if (!ctx.config.json) {
+      for (const line of lines) ctx.io.stdout(line);
+    }
+
+    if (ctx.config.openBrowser && process.env.HUDDLE_OPEN_BROWSER !== "0") {
+      try {
+        const { execFile } = await import("node:child_process");
+        const { promisify } = await import("node:util");
+        const execFileAsync = promisify(execFile);
+        const opener =
+          process.platform === "darwin" ? "open" : process.platform === "win32" ? "cmd" : "xdg-open";
+        const args =
+          process.platform === "win32" ? ["/c", "start", "", openTarget] : [openTarget];
+        await execFileAsync(opener, args, { timeout: 5_000 }).catch(() => undefined);
+      } catch {
+        // Browser open is best-effort.
+      }
+    }
+
+    return pollDeviceLogin(server, device.deviceCode, device.interval, device.expiresIn, ctx);
   }
 
   const identity = identityHeader();

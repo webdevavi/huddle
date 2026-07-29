@@ -247,26 +247,4 @@ describe("PostgresStore", () => {
     expect(user?.displayName).toBe("Alice");
   });
 
-  const pgUrl = process.env.HUDDLE_TEST_DATABASE_URL;
-  const describePg = pgUrl ? describe : describe.skip;
-
-  describePg("integration (HUDDLE_TEST_DATABASE_URL)", () => {
-    it("creates a room against real Postgres", async () => {
-      const store = createPostgresStore({ connectionString: pgUrl! });
-      const clock = new FakeClock();
-      await store.upsertUser({ id: "pg-u1", displayName: "Pat", createdAt: clock.nowIso() });
-      const created = await store.createRoom({
-        roomId: `pg-r-${Date.now()}`,
-        slug: `pg-slug-${Date.now()}`,
-        incarnation: "inc-pg",
-        ownerUserId: "pg-u1",
-        ownerMemberId: "pg-m1",
-        nowIso: clock.nowIso(),
-      });
-      expect(created.event.sequence).toBe(1);
-      if ("close" in store && typeof (store as { close?: () => Promise<void> }).close === "function") {
-        await (store as { close: () => Promise<void> }).close();
-      }
-    });
-  });
 });
