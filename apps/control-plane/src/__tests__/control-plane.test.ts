@@ -185,4 +185,91 @@ describe("control-plane HTTP + WS", () => {
       await started.close();
     }
   });
+
+  it("reports fake auth mode and supports runner ingest + owner reclaim", async () => {
+    const clock = new FakeClock();
+    const ids = new FakeIdGenerator(200);
+    const deps = createDeps({
+      host: "127.0.0.1",
+      port: 0,
+      clock,
+      ids,
+    });
+    const started = await startControlPlane(deps);
+    try {
+      const mode = await json(`${started.url}/v1/auth/mode`, { method: "GET" });
+      expect(mode.status).toBe(200);
+      expect(rec(mode.body).mode).toBe("fake");
+
+      const auth = await json(`${started.url}/v1/auth/session`, {
+        method: "POST",
+        headers: { "x-huddle-user": "alice:Alice" },
+      });
+      expect(auth.status).toBe(200);
+      const session = auth.session!;
+
+      const roomRes = await json(`${started.url}/v1/rooms`, {
+        method: "POST",
+        session,
+        body: JSON.stringify({ slug: "ingest-room" }),
+      });
+      expect(roomRes.status).toBe(201);
+      const room = rec(rec(roomRes.body).room);
+      const roomId = String(room.id);
+      const incarnation = String(room.incarnation);
+      const membershipVersion = Number(room.membershipVersion);
+
+      const connect = await json(
+        `${started.url}/v1/runner/connect?roomId=${encodeURIComponent(roomId)}&expectedEpoch=0`,
+        { method: "GET", session },
+      );
+      expect(connect.status).toBe(200);
+      const runnerEpoch = Number(rec(connect.body).runnerEpoch);
+      expect(runnerEpoch).toBe(1);
+
+      const ingest = await json(`${started.url}/v1/rooms/${roomId}/runner/ingest`, {
+        method: "POST",
+        session,
+        body: JSON.stringify({
+          roomIncarnation: incarnation,
+          runnerEpoch,
+          recordId: "wal-rec-1",
+          events: [
+            {
+              type: "agent.message_delta",
+              payload: { messageId: "msg-1", delta: "hello" },
+              actor: { type: "runner", id: "runner-1" },
+              visibility: "room",
+            },
+          ],
+        }),
+      });
+      expect(ingest.status).toBe(200);
+      expect(rec(ingest.body).lastAckedRecordId).toBe("wal-rec-1");
+      expect(typeof rec(ingest.body).serverCursor).toBe("string");
+
+      const staleEpoch = await json(`${started.url}/v1/rooms/${roomId}/runner/ingest`, {
+        method: "POST",
+        session,
+        body: JSON.stringify({
+          roomIncarnation: incarnation,
+          runnerEpoch: 0,
+          recordId: "wal-rec-2",
+          events: [],
+        }),
+      });
+      expect(staleEpoch.status).toBe(409);
+
+      const reclaim = await json(`${started.url}/v1/rooms/${roomId}/driver/reclaim`, {
+        method: "POST",
+        session,
+        body: JSON.stringify({ expectedMembershipVersion: membershipVersion }),
+      });
+      expect(reclaim.status).toBe(200);
+      expect(rec(rec(reclaim.body).lease).state).toBe("active");
+      expect(Number(rec(rec(reclaim.body).lease).leaseVersion)).toBeGreaterThan(1);
+    } finally {
+      await started.close();
+    }
+  });
 });

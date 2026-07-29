@@ -1,15 +1,20 @@
 import { FakeClock, FakeIdGenerator } from "@huddle/testkit";
 import { describe, expect, it } from "vitest";
-import { createSqliteStore } from "../index.js";
+import {
+  createPostgresStore,
+  createPostgresStoreFromSqliteMirror,
+  createSqliteStore,
+  loadControlPlaneMigrationSql,
+} from "../index.js";
 
 describe("SqliteStore", () => {
-  it("assigns monotonic sequences and replays idempotent mutations", () => {
+  it("assigns monotonic sequences and replays idempotent mutations", async () => {
     const clock = new FakeClock();
     const ids = new FakeIdGenerator();
     const store = createSqliteStore();
-    store.upsertUser({ id: "u1", displayName: "Alice", createdAt: clock.nowIso() });
+    await store.upsertUser({ id: "u1", displayName: "Alice", createdAt: clock.nowIso() });
 
-    const created = store.createRoom({
+    const created = await store.createRoom({
       roomId: "r1",
       slug: "demo",
       incarnation: "inc1",
@@ -20,7 +25,7 @@ describe("SqliteStore", () => {
     });
     expect(created.event.sequence).toBe(1);
 
-    const first = store.commitMutation({
+    const first = await store.commitMutation({
       mutationId: "mut_1",
       roomId: "r1",
       nowIso: clock.nowIso(),
@@ -46,7 +51,7 @@ describe("SqliteStore", () => {
     expect(first.receipt.sequence).toBe(2);
     expect(first.receipt.replayed).toBe(false);
 
-    const replay = store.commitMutation({
+    const replay = await store.commitMutation({
       mutationId: "mut_1",
       roomId: "r1",
       nowIso: clock.nowIso(),
@@ -71,9 +76,9 @@ describe("SqliteStore", () => {
     if (!replay.ok) throw new Error("expected ok");
     expect(replay.receipt.replayed).toBe(true);
     expect(replay.receipt.sequence).toBe(2);
-    expect(store.getHighWaterMark("r1")).toBe(2);
+    expect(await store.getHighWaterMark("r1")).toBe(2);
 
-    const conflict = store.commitMutation({
+    const conflict = await store.commitMutation({
       mutationId: "mut_1",
       roomId: "r1",
       nowIso: clock.nowIso(),
@@ -99,11 +104,11 @@ describe("SqliteStore", () => {
     expect(conflict.code).toBe("idempotency_conflict");
   });
 
-  it("rejects stale driver lease on steer", () => {
+  it("rejects stale driver lease on steer", async () => {
     const clock = new FakeClock();
     const store = createSqliteStore();
-    store.upsertUser({ id: "u1", displayName: "Alice", createdAt: clock.nowIso() });
-    store.createRoom({
+    await store.upsertUser({ id: "u1", displayName: "Alice", createdAt: clock.nowIso() });
+    await store.createRoom({
       roomId: "r1",
       slug: "demo",
       incarnation: "inc1",
@@ -112,7 +117,7 @@ describe("SqliteStore", () => {
       nowIso: clock.nowIso(),
     });
 
-    const stale = store.commitMutation({
+    const stale = await store.commitMutation({
       mutationId: "mut_steer",
       roomId: "r1",
       nowIso: clock.nowIso(),
@@ -139,11 +144,11 @@ describe("SqliteStore", () => {
     expect(stale.code).toBe("lease_invalid");
   });
 
-  it("supports opaque catch-up after a sequence cursor", () => {
+  it("supports opaque catch-up after a sequence cursor", async () => {
     const clock = new FakeClock();
     const store = createSqliteStore();
-    store.upsertUser({ id: "u1", displayName: "Alice", createdAt: clock.nowIso() });
-    store.createRoom({
+    await store.upsertUser({ id: "u1", displayName: "Alice", createdAt: clock.nowIso() });
+    await store.createRoom({
       roomId: "r1",
       slug: "demo",
       incarnation: "inc1",
@@ -153,7 +158,7 @@ describe("SqliteStore", () => {
     });
 
     for (let i = 0; i < 3; i += 1) {
-      const result = store.commitMutation({
+      const result = await store.commitMutation({
         mutationId: `mut_${i}`,
         roomId: "r1",
         nowIso: clock.nowIso(),
@@ -177,7 +182,7 @@ describe("SqliteStore", () => {
       expect(result.ok).toBe(true);
     }
 
-    const page = store.getEventsAfter("r1", 1, {
+    const page = await store.getEventsAfter("r1", 1, {
       limitBytes: 1024 * 1024,
       visibility: new Set(["room", "approvers", "owner"]),
     });
@@ -185,11 +190,11 @@ describe("SqliteStore", () => {
     expect(page.highWaterMark).toBe(4);
   });
 
-  it("CAS-rejects stale membership version", () => {
+  it("CAS-rejects stale membership version", async () => {
     const clock = new FakeClock();
     const store = createSqliteStore();
-    store.upsertUser({ id: "u1", displayName: "Alice", createdAt: clock.nowIso() });
-    store.createRoom({
+    await store.upsertUser({ id: "u1", displayName: "Alice", createdAt: clock.nowIso() });
+    await store.createRoom({
       roomId: "r1",
       slug: "demo",
       incarnation: "inc1",
@@ -198,7 +203,7 @@ describe("SqliteStore", () => {
       nowIso: clock.nowIso(),
     });
 
-    const result = store.commitMutation({
+    const result = await store.commitMutation({
       mutationId: "mut_stale_mv",
       roomId: "r1",
       nowIso: clock.nowIso(),
@@ -222,5 +227,46 @@ describe("SqliteStore", () => {
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error("expected fail");
     expect(result.code).toBe("membership_version_mismatch");
+  });
+});
+
+describe("PostgresStore", () => {
+  it("createPostgresStore constructs and rejects a bad connection on first query", async () => {
+    const store = createPostgresStore({
+      connectionString: "postgres://invalid:invalid@127.0.0.1:1/nonexistent",
+    });
+    await expect(store.getUser("nobody")).rejects.toThrow();
+  });
+
+  it("createPostgresStoreFromSqliteMirror applies shared migration SQL", async () => {
+    const sql = loadControlPlaneMigrationSql();
+    expect(sql).toContain("CREATE TABLE IF NOT EXISTS rooms");
+    const store = createPostgresStoreFromSqliteMirror();
+    await store.upsertUser({ id: "u1", displayName: "Alice", createdAt: new Date().toISOString() });
+    const user = await store.getUser("u1");
+    expect(user?.displayName).toBe("Alice");
+  });
+
+  const pgUrl = process.env.HUDDLE_TEST_DATABASE_URL;
+  const describePg = pgUrl ? describe : describe.skip;
+
+  describePg("integration (HUDDLE_TEST_DATABASE_URL)", () => {
+    it("creates a room against real Postgres", async () => {
+      const store = createPostgresStore({ connectionString: pgUrl! });
+      const clock = new FakeClock();
+      await store.upsertUser({ id: "pg-u1", displayName: "Pat", createdAt: clock.nowIso() });
+      const created = await store.createRoom({
+        roomId: `pg-r-${Date.now()}`,
+        slug: `pg-slug-${Date.now()}`,
+        incarnation: "inc-pg",
+        ownerUserId: "pg-u1",
+        ownerMemberId: "pg-m1",
+        nowIso: clock.nowIso(),
+      });
+      expect(created.event.sequence).toBe(1);
+      if ("close" in store && typeof (store as { close?: () => Promise<void> }).close === "function") {
+        await (store as { close: () => Promise<void> }).close();
+      }
+    });
   });
 });

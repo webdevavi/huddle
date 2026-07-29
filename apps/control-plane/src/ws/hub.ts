@@ -58,11 +58,15 @@ export class RoomHub {
   }
 
   drainRoom(roomId: string): void {
+    void this.#drainRoomAsync(roomId);
+  }
+
+  async #drainRoomAsync(roomId: string): Promise<void> {
     const set = this.#rooms.get(roomId);
     if (!set || set.size === 0) return;
 
     for (const client of set) {
-      const page = this.deps.store.getEventsAfter(roomId, client.lastSequence, {
+      const page = await this.deps.store.getEventsAfter(roomId, client.lastSequence, {
         limitBytes: 2 * 1024 * 1024,
         visibility: client.visibility,
       });
@@ -72,12 +76,11 @@ export class RoomHub {
       }
     }
 
-    // Advance durable outbox cursors after a fan-out attempt (single-node cleanup).
-    const browser = this.deps.store.claimOutbox("browser", roomId, null, 200);
-    const runner = this.deps.store.claimOutbox("runner", roomId, null, 200);
+    const browser = await this.deps.store.claimOutbox("browser", roomId, null, 200);
+    const runner = await this.deps.store.claimOutbox("runner", roomId, null, 200);
     const ids = [...browser, ...runner].map((r) => r.id);
     if (ids.length > 0) {
-      this.deps.store.markOutboxDelivered(ids, this.deps.clock.nowIso());
+      await this.deps.store.markOutboxDelivered(ids, this.deps.clock.nowIso());
     }
   }
 

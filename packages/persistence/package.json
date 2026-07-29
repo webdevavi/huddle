@@ -11,17 +11,21 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "typecheck": "tsc -b",
     "test": "vitest run"
   },
   "dependencies": {
     "@huddle/authz": "workspace:*",
-    "@huddle/protocol": "workspace:*"
+    "@huddle/protocol": "workspace:*",
+    "pg": "^8.22.0"
   },
   "devDependencies": {
     "@huddle/testkit": "workspace:*",
+    "@types/pg": "^8.20.0",
     "typescript": "^5.8.2",
     "vitest": "^3.0.8"
   }

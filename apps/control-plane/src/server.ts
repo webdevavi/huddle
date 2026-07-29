@@ -14,16 +14,16 @@ export type StartedServer = {
   close: () => Promise<void>;
 };
 
-function visibilityForSubject(
+async function visibilityForSubject(
   deps: ControlPlaneDeps,
   roomId: string,
   subjectType: "member" | "runner",
   subjectId: string,
-): Set<string> {
+): Promise<Set<string>> {
   if (subjectType === "runner") {
     return new Set(["room", "approvers", "owner"]);
   }
-  const member = deps.store.getMember(roomId, subjectId);
+  const member = await deps.store.getMember(roomId, subjectId);
   if (!member || member.removedAt) return new Set();
   if (member.role === "owner") return new Set(["room", "approvers", "owner"]);
   if (member.role === "collaborator") return new Set(["room", "approvers"]);
@@ -76,76 +76,93 @@ export async function startControlPlane(deps: ControlPlaneDeps): Promise<Started
   const wss = new WebSocketServer({ noServer: true });
 
   server.on("upgrade", (req: IncomingMessage, socket: Duplex, head: Buffer) => {
-    const host = req.headers.host ?? `${deps.host}:${deps.port}`;
-    const url = new URL(req.url ?? "/", `http://${host}`);
-    if (url.pathname !== "/v1/ws") {
+    void (async () => {
+      const host = req.headers.host ?? `${deps.host}:${deps.port}`;
+      const url = new URL(req.url ?? "/", `http://${host}`);
+      if (url.pathname !== "/v1/ws") {
+        socket.destroy();
+        return;
+      }
+      const ticketId = url.searchParams.get("ticket");
+      if (!ticketId) {
+        socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+      const ticket = await deps.store.consumeWsTicket(ticketId, deps.clock.nowIso());
+      if (!ticket) {
+        socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        wss.emit("connection", ws, req, ticket);
+      });
+    })().catch(() => {
       socket.destroy();
-      return;
-    }
-    const ticketId = url.searchParams.get("ticket");
-    if (!ticketId) {
-      socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
-      socket.destroy();
-      return;
-    }
-    const ticket = deps.store.consumeWsTicket(ticketId, deps.clock.nowIso());
-    if (!ticket) {
-      socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
-      socket.destroy();
-      return;
-    }
-    wss.handleUpgrade(req, socket, head, (ws) => {
-      wss.emit("connection", ws, req, ticket);
     });
   });
 
   wss.on(
     "connection",
-    (ws: WebSocket, _req: IncomingMessage, ticket: { roomId: string; subjectType: "member" | "runner"; subjectId: string; id: string }) => {
-      const visibility = visibilityForSubject(
-        deps,
-        ticket.roomId,
-        ticket.subjectType,
-        ticket.subjectId,
-      );
-      if (visibility.size === 0) {
-        ws.close(4003, "unauthorized");
-        return;
-      }
-      const highWaterMark = deps.store.getHighWaterMark(ticket.roomId);
-      const client: HubClient = {
-        id: ticket.id,
-        roomId: ticket.roomId,
-        subjectType: ticket.subjectType,
-        subjectId: ticket.subjectId,
-        visibility,
-        lastSequence: highWaterMark,
-        send: (payload) => {
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify(payload));
-          }
-        },
-        close: (code, reason) => ws.close(code, reason),
-      };
-      hub.add(client);
-      ws.send(
-        JSON.stringify({
-          type: "subscribed",
-          roomId: ticket.roomId,
-          highWaterMark,
-          subjectType: ticket.subjectType,
-        }),
-      );
-      ws.on("close", () => hub.remove(client.id));
-      ws.on("message", (data) => {
-        try {
-          const msg = JSON.parse(String(data)) as { type?: string; afterSequence?: number };
-          if (msg.type === "ack" && typeof msg.afterSequence === "number") {
-            client.lastSequence = Math.max(client.lastSequence, msg.afterSequence);
-          }
-        } catch {
-          // ignore malformed client frames
+    (
+      ws: WebSocket,
+      _req: IncomingMessage,
+      ticket: {
+        roomId: string;
+        subjectType: "member" | "runner";
+        subjectId: string;
+        id: string;
+      },
+    ) => {
+      void (async () => {
+        const visibility = await visibilityForSubject(
+          deps,
+          ticket.roomId,
+          ticket.subjectType,
+          ticket.subjectId,
+        );
+        if (visibility.size === 0) {
+          ws.close(4003, "unauthorized");
+          return;
         }
+        const highWaterMark = await deps.store.getHighWaterMark(ticket.roomId);
+        const client: HubClient = {
+          id: ticket.id,
+          roomId: ticket.roomId,
+          subjectType: ticket.subjectType,
+          subjectId: ticket.subjectId,
+          visibility,
+          lastSequence: highWaterMark,
+          send: (payload) => {
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify(payload));
+            }
+          },
+          close: (code, reason) => ws.close(code, reason),
+        };
+        hub.add(client);
+        ws.send(
+          JSON.stringify({
+            type: "subscribed",
+            roomId: ticket.roomId,
+            highWaterMark,
+            subjectType: ticket.subjectType,
+          }),
+        );
+        ws.on("close", () => hub.remove(client.id));
+        ws.on("message", (data) => {
+          try {
+            const msg = JSON.parse(String(data)) as { type?: string; afterSequence?: number };
+            if (msg.type === "ack" && typeof msg.afterSequence === "number") {
+              client.lastSequence = Math.max(client.lastSequence, msg.afterSequence);
+            }
+          } catch {
+            // ignore malformed client frames
+          }
+        });
+      })().catch(() => {
+        ws.close(1011, "internal");
       });
     },
   );
