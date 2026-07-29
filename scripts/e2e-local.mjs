@@ -1,22 +1,31 @@
 #!/usr/bin/env node
 /**
- * Local end-to-end smoke against a running control plane.
+ * Local end-to-end smoke against a control plane.
  *
- * Prerequisites:
+ * Env:
  *   HUDDLE_E2E_URL=http://127.0.0.1:8787 (default)
+ *   HUDDLE_E2E_BOOT=1|0  auto-start control plane when healthz is down
+ *                        (default: on when CI=true or server unreachable)
  *
  * Covers: auth mode, Alice create+invite, Bob join, comment/suggest,
  * driver request/handoff/reclaim, runner ingest, HTTP catch-up, WS stream,
  * approval resolve, archive.
  */
+import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { mkdirSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import WebSocket from "ws";
 
 const BASE = (process.env.HUDDLE_E2E_URL ?? "http://127.0.0.1:8787").replace(/\/$/, "");
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 /** @type {string[]} */
 const steps = [];
 let failed = false;
+/** @type {import("node:child_process").ChildProcess | null} */
+let bootChild = null;
 
 function ok(name, detail = "") {
   steps.push(`PASS  ${name}${detail ? ` — ${detail}` : ""}`);
@@ -123,8 +132,112 @@ async function waitForWsEvent(wsUrl, timeoutMs = 5000) {
   });
 }
 
+async function healthOk() {
+  try {
+    const health = await json("/healthz");
+    return health.res.ok && health.body?.ok === true;
+  } catch {
+    return false;
+  }
+}
+
+function shouldAutoBoot() {
+  const flag = process.env.HUDDLE_E2E_BOOT?.trim();
+  if (flag === "0" || flag === "false") return false;
+  if (flag === "1" || flag === "true") return true;
+  return process.env.CI === "true" || process.env.CI === "1";
+}
+
+async function ensureControlPlane() {
+  if (await healthOk()) return;
+
+  if (!shouldAutoBoot()) {
+    throw new Error(
+      `control plane not reachable at ${BASE}; start it or set HUDDLE_E2E_BOOT=1`,
+    );
+  }
+
+  const url = new URL(BASE);
+  const host = url.hostname || "127.0.0.1";
+  const port = url.port || (url.protocol === "https:" ? "443" : "80");
+  const sqlitePath = process.env.HUDDLE_SQLITE_PATH ?? join(ROOT, ".huddle", "e2e.db");
+  mkdirSync(dirname(sqlitePath), { recursive: true });
+
+  console.log(`Booting control plane on ${host}:${port}…`);
+  const cliJs = join(ROOT, "apps/control-plane/dist/cli.js");
+  const cliTs = join(ROOT, "apps/control-plane/src/cli.ts");
+  /** @type {string[]} */
+  let args;
+  try {
+    const { accessSync, constants } = await import("node:fs");
+    accessSync(cliJs, constants.R_OK);
+    args = [cliJs];
+  } catch {
+    // Fall back to tsx for contributor runs without a prior typecheck build.
+    args = ["--import", "tsx/esm", cliTs];
+  }
+
+  bootChild = spawn(process.execPath, args, {
+    cwd: ROOT,
+    env: {
+      ...process.env,
+      HOST: host,
+      PORT: String(port),
+      HUDDLE_HOST: host,
+      HUDDLE_PORT: String(port),
+      HUDDLE_SQLITE_PATH: sqlitePath,
+      HUDDLE_BASE_URL: BASE,
+      HUDDLE_TELEMETRY: "off",
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  bootChild.stdout?.on("data", (chunk) => {
+    if (process.env.HUDDLE_E2E_VERBOSE === "1") process.stdout.write(chunk);
+  });
+  bootChild.stderr?.on("data", (chunk) => {
+    if (process.env.HUDDLE_E2E_VERBOSE === "1") process.stderr.write(chunk);
+  });
+  bootChild.on("exit", (code, signal) => {
+    if (!failed && code && code !== 0) {
+      console.error(`control plane exited early (code=${code}, signal=${signal})`);
+    }
+    bootChild = null;
+  });
+
+  const deadline = Date.now() + 20_000;
+  while (Date.now() < deadline) {
+    if (bootChild?.exitCode != null) {
+      throw new Error(`control plane exited before ready (code=${bootChild.exitCode})`);
+    }
+    if (await healthOk()) {
+      ok("boot control plane", `${BASE}`);
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  throw new Error(`timed out waiting for ${BASE}/healthz after boot`);
+}
+
+function stopBootedControlPlane() {
+  if (!bootChild || bootChild.killed) return;
+  try {
+    bootChild.kill("SIGTERM");
+  } catch {
+    // ignore
+  }
+  bootChild = null;
+}
+
 async function main() {
   console.log(`Huddle local E2E → ${BASE}\n`);
+
+  try {
+    await ensureControlPlane();
+  } catch (e) {
+    fail("boot control plane", e);
+    process.exit(1);
+  }
 
   // 1. health + auth mode
   try {
@@ -133,6 +246,7 @@ async function main() {
     ok("healthz");
   } catch (e) {
     fail("healthz", e);
+    stopBootedControlPlane();
     process.exit(1);
   }
 
@@ -377,6 +491,7 @@ async function main() {
 
   console.log("\n—— summary ——");
   for (const line of steps) console.log(line);
+  stopBootedControlPlane();
   if (failed) {
     console.error("\nE2E FAILED");
     process.exit(1);
@@ -384,7 +499,18 @@ async function main() {
   console.log("\nE2E PASSED");
 }
 
+process.on("exit", stopBootedControlPlane);
+process.on("SIGINT", () => {
+  stopBootedControlPlane();
+  process.exit(130);
+});
+process.on("SIGTERM", () => {
+  stopBootedControlPlane();
+  process.exit(143);
+});
+
 main().catch((err) => {
   console.error(err);
+  stopBootedControlPlane();
   process.exit(1);
 });
