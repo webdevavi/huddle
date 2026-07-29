@@ -32,6 +32,21 @@ export {
 } from "./approval-evidence.js";
 
 export {
+  Sha256EvidenceDigester,
+  Ed25519ApprovalSigner,
+  Ed25519ApprovalVerifier,
+  DeviceTrustStore,
+  generateDeviceKeyPair,
+  buildUnsignedEvidence,
+  canonicalJson,
+  type DeviceKeyPair,
+  type TrustStore,
+  type CryptoVerifyContext,
+  type UnsignedApprovalEvidence,
+  type ApprovalSigner,
+} from "./crypto.js";
+
+export {
   authorizeMutation,
   type MutationAuthzInput,
   type MutationAuthzResult,

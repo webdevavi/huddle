@@ -47,8 +47,11 @@ export type GithubAuthMount = {
  * When GitHub env is unset, only `/v1/auth/mode` is meaningful; start/callback return 503.
  */
 export function registerGithubAuthRoutes(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  app: { get: Function; post: Function },
+  // Hono app from createApp — keep loose to avoid Variables schema coupling
+  app: {
+    get: (path: string, handler: (c: Context) => Response | Promise<Response> | void) => unknown;
+    post: (path: string, handler: (c: Context) => Response | Promise<Response> | void) => unknown;
+  },
   mount: GithubAuthMount,
 ): void {
   app.get("/v1/auth/mode", (c: Context) => c.json({ mode: authMode() }));
